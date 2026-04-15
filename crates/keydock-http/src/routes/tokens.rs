@@ -7,18 +7,19 @@ use keydock_usecase::mint;
 use serde::{Deserialize, Serialize};
 use time::Duration;
 use tracing::instrument;
+use utoipa::ToSchema;
 
 use crate::error::{bad_request, map_use_case_repo_err, not_found, service_unavailable};
 use crate::extract::BucketAuth;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTokenForm {
     pub prefix: Option<String>,
     pub permissions: String,
     pub ttl: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct AccessTokenResponse {
     pub access_token: String,
 }
@@ -41,6 +42,27 @@ fn parse_permissions(raw: &str) -> Result<keydock_domain::Permission, Response> 
     Ok(p)
 }
 
+#[utoipa::path(
+    post,
+    path = "/{bucket}/tokens/",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+    ),
+    request_body(
+        content(
+            (CreateTokenForm = "application/x-www-form-urlencoded"),
+        ),
+    ),
+    responses(
+        (status = 200, description = "Issued JWT", body = AccessTokenResponse),
+        (status = 400, description = "Bad request", body = crate::error::ErrorBody),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
+        (status = 404, description = "Bucket not found", body = crate::error::ErrorBody),
+        (status = 503, description = "Signing unavailable", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "tokens"
+)]
 #[instrument(skip_all, name = "tokens::create_token")]
 pub async fn create_token(
     State(state): State<AppState>,
