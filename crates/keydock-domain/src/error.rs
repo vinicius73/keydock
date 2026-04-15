@@ -14,4 +14,7 @@ pub enum DomainError {
 
     #[error("TTL is invalid: {0}")]
     InvalidTtl(String),
+
+    #[error("counter operation invalid: {0}")]
+    InvalidCounterOp(String),
 }
