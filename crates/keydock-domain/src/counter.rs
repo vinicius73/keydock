@@ -27,11 +27,7 @@ impl CounterOp {
         let s = std::str::from_utf8(body)
             .map_err(|_| DomainError::InvalidCounterOp("body is not valid utf-8".into()))?;
         let t = s.trim();
-        if t.is_empty() {
-            return Err(DomainError::InvalidCounterOp("empty body".into()));
-        }
-        let mut chars = t.chars();
-        let Some(first) = chars.next() else {
+        let Some(first) = t.chars().next() else {
             return Err(DomainError::InvalidCounterOp("empty body".into()));
         };
         if first != '+' && first != '-' {

@@ -31,6 +31,30 @@ async fn txn_empty_batch_returns_204() {
 }
 
 #[tokio::test]
+async fn txn_key_percent_decodes_like_path_keys() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&json!({
+            "txn": [{ "cmd": "set", "key": "hello%20world", "value": "ok" }]
+        }))
+        .await;
+    res.assert_status_no_content();
+
+    let get = ctx
+        .server
+        .get(&format!("/{bid}/hello%20world"))
+        .authorization_bearer("r")
+        .await;
+    get.assert_status_ok();
+    get.assert_text("ok");
+}
+
+#[tokio::test]
 async fn txn_set_creates_key() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
