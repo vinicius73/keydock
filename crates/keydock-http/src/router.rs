@@ -41,6 +41,7 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
     Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health::health_check))
+        .route("/ready", get(health::readiness_check))
         .route(
             "/metrics",
             get(move || {
