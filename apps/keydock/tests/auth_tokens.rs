@@ -2,8 +2,7 @@
 
 mod common;
 
-use pretty_assertions::assert_eq;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use common::buckets::{CreateBucketForm, create_bucket};
 use common::tokens::{CreateTokenForm, UpdatePolicyForm, create_token, patch_policy};
@@ -38,13 +37,18 @@ async fn create_token_requires_admin() {
     };
     let forbidden = create_token(&server, &bid, "w", &form).await;
     forbidden.assert_status_forbidden();
-    let body: Value = forbidden.json();
-    assert_eq!(body["error"], "forbidden");
+    forbidden.assert_json(&json!({
+        "error": "forbidden"
+    }));
 
     let ok = create_token(&server, &bid, "sec", &form).await;
     ok.assert_status_ok();
     let body: Value = ok.json();
-    assert!(access_token_str(&body).contains('.'));
+    let access = access_token_str(&body).to_string();
+    assert!(access.contains('.'));
+    ok.assert_json(&json!({
+        "access_token": access
+    }));
 }
 
 #[tokio::test]
@@ -71,13 +75,19 @@ async fn token_read_within_prefix() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = access_token_str(&token);
+    let access = access_token_str(&token).to_string();
+    tok.assert_json(&json!({
+        "access_token": access
+    }));
 
     let ok = server
         .get(&format!("/{bid}/user:42:name"))
-        .authorization_bearer(access)
+        .authorization_bearer(&access)
         .await;
     ok.assert_status_ok();
+    ok.assert_json(&json!({
+        "ok": true
+    }));
 }
 
 #[tokio::test]
@@ -104,15 +114,19 @@ async fn token_read_outside_prefix() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = access_token_str(&token);
+    let access = access_token_str(&token).to_string();
+    tok.assert_json(&json!({
+        "access_token": access
+    }));
 
     let response = server
         .get(&format!("/{bid}/admin:config"))
-        .authorization_bearer(access)
+        .authorization_bearer(&access)
         .await;
     response.assert_status_forbidden();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "forbidden");
+    response.assert_json(&json!({
+        "error": "forbidden"
+    }));
 }
 
 #[tokio::test]
@@ -139,15 +153,19 @@ async fn token_expired() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = access_token_str(&token);
+    let access = access_token_str(&token).to_string();
+    tok.assert_json(&json!({
+        "access_token": access
+    }));
 
     let response = server
         .get(&format!("/{bid}/k1"))
-        .authorization_bearer(access)
+        .authorization_bearer(&access)
         .await;
     response.assert_status_unauthorized();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "unauthorized");
+    response.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 }
 
 #[tokio::test]
@@ -186,15 +204,19 @@ async fn token_wrong_bucket() {
     let tok = create_token(&server, &a, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = access_token_str(&token);
+    let access = access_token_str(&token).to_string();
+    tok.assert_json(&json!({
+        "access_token": access
+    }));
 
     let response = server
         .get(&format!("/{b}/k1"))
-        .authorization_bearer(access)
+        .authorization_bearer(&access)
         .await;
     response.assert_status_unauthorized();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "unauthorized");
+    response.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 }
 
 #[tokio::test]
@@ -221,13 +243,19 @@ async fn token_invalidated_after_signing_key_rotation() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = access_token_str(&token);
+    let access = access_token_str(&token).to_string();
+    tok.assert_json(&json!({
+        "access_token": access
+    }));
 
     let ok_before = server
         .get(&format!("/{bid}/k1"))
-        .authorization_bearer(access)
+        .authorization_bearer(&access)
         .await;
     ok_before.assert_status_ok();
+    ok_before.assert_json(&json!({
+        "ok": true
+    }));
 
     let patch = patch_policy(
         &server,
@@ -242,18 +270,27 @@ async fn token_invalidated_after_signing_key_rotation() {
 
     let unauthorized = server
         .get(&format!("/{bid}/k1"))
-        .authorization_bearer(access)
+        .authorization_bearer(&access)
         .await;
     unauthorized.assert_status_unauthorized();
+    unauthorized.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 
     let tok2 = create_token(&server, &bid, "sec", &form).await;
     tok2.assert_status_ok();
     let token2: Value = tok2.json();
-    let access2 = access_token_str(&token2);
+    let access2 = access_token_str(&token2).to_string();
+    tok2.assert_json(&json!({
+        "access_token": access2
+    }));
 
     let ok_after = server
         .get(&format!("/{bid}/k1"))
-        .authorization_bearer(access2)
+        .authorization_bearer(&access2)
         .await;
     ok_after.assert_status_ok();
+    ok_after.assert_json(&json!({
+        "ok": true
+    }));
 }

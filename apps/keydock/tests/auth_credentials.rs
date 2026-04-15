@@ -4,8 +4,7 @@ mod common;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
-use pretty_assertions::assert_eq;
-use serde_json::Value;
+use serde_json::json;
 
 use common::buckets::{CreateBucketForm, create_bucket};
 
@@ -30,8 +29,9 @@ async fn bearer_secret_key_grants_admin() {
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
-    let body: Value = response.json();
-    assert_eq!(body["ok"], true);
+    response.assert_json(&json!({
+        "ok": true
+    }));
 }
 
 #[tokio::test]
@@ -61,8 +61,9 @@ async fn bearer_write_key_grants_write() {
         .authorization_bearer("r")
         .await;
     forbidden.assert_status_forbidden();
-    let body: Value = forbidden.json();
-    assert_eq!(body["error"], "forbidden");
+    forbidden.assert_json(&json!({
+        "error": "forbidden"
+    }));
 }
 
 #[tokio::test]
@@ -89,8 +90,9 @@ async fn bearer_read_key_grants_read() {
 
     let unauthorized = server.get(&format!("/{bid}/k1")).await;
     unauthorized.assert_status_unauthorized();
-    let body: Value = unauthorized.json();
-    assert_eq!(body["error"], "unauthorized");
+    unauthorized.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 }
 
 #[tokio::test]
@@ -178,8 +180,9 @@ async fn wrong_credential_returns_401() {
         .authorization_bearer("wrong")
         .await;
     response.assert_status_unauthorized();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "unauthorized");
+    response.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 }
 
 #[tokio::test]
@@ -187,8 +190,9 @@ async fn missing_bucket_returns_404() {
     let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let response = server.get("/no-such-bucket/k").await;
     response.assert_status_not_found();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "not_found");
+    response.assert_json(&json!({
+        "error": "not_found"
+    }));
 }
 
 #[tokio::test]
@@ -209,6 +213,10 @@ async fn anonymous_public_bucket_read() {
 
     let response = server.get(&format!("/{bid}/k1")).await;
     response.assert_status_ok();
+
+    response.assert_json(&json!({
+        "ok": true
+    }));
 }
 
 #[tokio::test]
@@ -229,6 +237,8 @@ async fn anonymous_restricted_bucket_read() {
 
     let response = server.get(&format!("/{bid}/k1")).await;
     response.assert_status_unauthorized();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "unauthorized");
+
+    response.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 }
