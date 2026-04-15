@@ -31,7 +31,7 @@ Default stance: **focus only on the provided files**.
 Applies to:
 
 - **Rust unit tests** inside crate/app modules: `"{crates,apps}/**/*_test.rs"` or `#[cfg(test)] mod tests { ... }` at the bottom of a `.rs` file.
-- **HTTP integration tests**: `apps/<app>/tests/*.rs` (today: mostly under `apps/keydock/tests/`) using `keydock_testkit::test_app()` + `axum_test::TestServer`.
+- **HTTP integration tests**: `apps/<app>/tests/*.rs` (today: mostly under `apps/keydock/tests/`) using `keydock_testkit::TestContext` + `axum_test::TestServer`.
 
 ## Non-negotiables (Balanced stance)
 

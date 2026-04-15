@@ -64,7 +64,7 @@ fn test_normalize_string(#[case] input: &str, #[case] expected: &str) {
 
 ## Integration tests (HTTP)
 
-For HTTP-level tests in this repo, prefer `apps/*/tests/*.rs` with `keydock_testkit::test_app()`
+For HTTP-level tests in this repo, prefer `apps/*/tests/*.rs` with `keydock_testkit::TestContext`
 and `axum_test::TestServer` (see `apps/keydock/tests/health.rs` for the established pattern).
 
 ## Test Organization

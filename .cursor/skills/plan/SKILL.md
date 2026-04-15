@@ -41,7 +41,7 @@ This workspace is organized around `apps/` (binaries) and `crates/` (libraries):
 - `crates/keydock-fjall/`: storage adapter implementation
 - `crates/keydock-state/`: shared application state for HTTP layer
 - `crates/keydock-config/`: CLI/config load/merge/validate
-- `crates/keydock-testkit/`: integration test fixtures (`keydock_testkit::test_app()`)
+- `crates/keydock-testkit/`: integration test fixtures (`keydock_testkit::TestContext`)
 - HTTP integration tests: `apps/<app>/tests/*.rs`
 
 ---

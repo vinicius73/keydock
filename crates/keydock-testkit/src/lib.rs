@@ -2,11 +2,19 @@
 
 //! Shared test fixtures and HTTP helpers.
 
+mod buckets;
+mod tokens;
+
 use std::sync::{Arc, Mutex};
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use metrics_exporter_prometheus::{BuildError, PrometheusBuilder, PrometheusHandle};
 use thiserror::Error;
 use tracing::instrument;
+
+pub use buckets::BucketSetup;
+pub use tokens::{PolicyPatch, TokenSetup};
 
 use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
@@ -16,9 +24,8 @@ use keydock_support::clock::SystemClock;
 
 static PROMETHEUS: Mutex<Option<PrometheusHandle>> = Mutex::new(None);
 
-/// Errors while constructing the integration test app.
 #[derive(Debug, Error)]
-pub enum TestKitError {
+enum TestKitError {
     #[error(transparent)]
     Io(#[from] std::io::Error),
 
@@ -41,9 +48,50 @@ fn prometheus_handle() -> Result<PrometheusHandle, TestKitError> {
     Ok(handle)
 }
 
-/// Builds a temporary data directory and full Axum app for integration tests.
+/// Full Axum test server with a temporary data directory.
+///
+/// The directory is dropped when `TestContext` is dropped.
+pub struct TestContext {
+    _dir: tempfile::TempDir,
+    pub server: axum_test::TestServer,
+}
+
+impl TestContext {
+    /// Builds a temporary data directory and full Axum app for integration tests.
+    ///
+    /// Panics if setup fails. The panic location points at the caller (test).
+    #[track_caller]
+    pub fn new() -> Self {
+        match build_test_app() {
+            Ok((dir, server)) => Self { _dir: dir, server },
+            Err(e) => panic!("failed to construct test app: {e}"),
+        }
+    }
+
+    /// Creates a bucket via `POST /` and returns the bucket id (body text).
+    pub async fn create_bucket(&self, setup: BucketSetup) -> String {
+        buckets::create_bucket(&self.server, &setup).await
+    }
+}
+
+impl Default for TestContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Builds an HTTP `Authorization: Basic ...` header value for tests.
+///
+/// Uses `username:password` with password `ignored`, matching the legacy integration
+/// test pattern for Basic auth against static keys.
+pub fn basic_auth_header(credential: &str) -> String {
+    let pair = format!("{credential}:ignored");
+    let encoded = BASE64_STD.encode(pair.as_bytes());
+    format!("Basic {encoded}")
+}
+
 #[instrument(skip_all)]
-pub fn test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKitError> {
+fn build_test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKitError> {
     let dir = tempfile::tempdir()?;
     let store = Arc::new(FjallStore::open(dir.path())?);
     let buckets: Arc<dyn keydock_usecase::BucketRepository> = store.clone();

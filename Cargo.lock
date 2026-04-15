@@ -1233,6 +1233,8 @@ name = "keydock-testkit"
 version = "0.1.0-alpha"
 dependencies = [
  "axum-test",
+ "base64",
+ "bytes",
  "keydock-domain",
  "keydock-fjall",
  "keydock-http",
@@ -1240,6 +1242,8 @@ dependencies = [
  "keydock-support",
  "keydock-usecase",
  "metrics-exporter-prometheus",
+ "serde",
+ "serde_urlencoded",
  "tempfile",
  "thiserror",
  "tracing",
