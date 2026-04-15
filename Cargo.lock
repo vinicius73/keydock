@@ -1119,6 +1119,7 @@ version = "0.1.0-alpha"
 dependencies = [
  "bytes",
  "hmac",
+ "pretty_assertions",
  "secrecy",
  "serde",
  "sha2",
