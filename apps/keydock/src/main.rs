@@ -11,7 +11,7 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
-use keydock_config::{CliError, Command, Config, ServeArgs};
+use keydock_config::{CliError, Command, Config, ServeArgs, write_init_config};
 use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
 use keydock_http::build_router;
@@ -24,8 +24,8 @@ fn main() -> anyhow::Result<()> {
         Ok(c) => c,
         Err(e) => {
             if matches!(e, CliError::MissingSubcommand) {
-                eprintln!("usage: keydock serve [options]\n");
-                eprintln!("Run `keydock serve --help` for details.");
+                eprintln!("usage: keydock <serve | init> ...\n");
+                eprintln!("Run `keydock --help` for details.");
             } else {
                 eprintln!("{e}");
             }
@@ -41,9 +41,22 @@ fn main() -> anyhow::Result<()> {
                 .context("tokio runtime")?;
             rt.block_on(async move { serve(args).await })?;
         }
+        Command::Init(args) => {
+            init_instance(&args.dir, args.force);
+        }
     }
 
     Ok(())
+}
+
+fn init_instance(instance_dir: &std::path::Path, force: bool) {
+    match write_init_config(instance_dir, force) {
+        Ok(path) => println!("Created {}", path.display()),
+        Err(e) => {
+            eprintln!("{e}");
+            std::process::exit(2);
+        }
+    }
 }
 
 async fn serve(args: ServeArgs) -> anyhow::Result<()> {

@@ -6,7 +6,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum CliError {
-    #[error("missing subcommand (expected `serve`)")]
+    #[error("missing subcommand (expected one of: `serve`, `init`)")]
     MissingSubcommand,
 
     #[error(transparent)]
@@ -14,11 +14,15 @@ pub enum CliError {
 
     #[error("invalid value for {0}: {1}")]
     InvalidValue(&'static str, String),
+
+    #[error("missing directory argument for `init`")]
+    MissingInitDirectory,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Serve(ServeArgs),
+    Init(InitArgs),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -26,6 +30,12 @@ pub struct ServeArgs {
     pub config_path: Option<PathBuf>,
     pub listen: Option<SocketAddr>,
     pub data_dir: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitArgs {
+    pub dir: PathBuf,
+    pub force: bool,
 }
 
 /// Parses CLI into a structured command (minimal surface for the composition root).
@@ -44,6 +54,7 @@ pub fn parse() -> Result<Command, CliError> {
 
     match sub.as_str() {
         "serve" => Ok(Command::Serve(parse_serve(&mut parser)?)),
+        "init" => Ok(Command::Init(parse_init(&mut parser)?)),
         other => Err(CliError::InvalidValue("subcommand", other.to_string())),
     }
 }
@@ -79,6 +90,37 @@ fn parse_serve(parser: &mut lexopt::Parser) -> Result<ServeArgs, CliError> {
     Ok(args)
 }
 
+fn parse_init(parser: &mut lexopt::Parser) -> Result<InitArgs, CliError> {
+    let mut force = false;
+    let mut dir: Option<PathBuf> = None;
+
+    while let Some(arg) = parser.next()? {
+        match arg {
+            Long("force") => {
+                force = true;
+            }
+            Short('h') | Long("help") => {
+                print_init_help();
+                std::process::exit(0);
+            }
+            Value(v) => {
+                let s = v.string()?;
+                if dir.is_some() {
+                    return Err(CliError::InvalidValue(
+                        "init",
+                        format!("unexpected extra argument: {s}"),
+                    ));
+                }
+                dir = Some(PathBuf::from(s));
+            }
+            arg => return Err(CliError::Parse(arg.unexpected())),
+        }
+    }
+
+    let dir = dir.ok_or(CliError::MissingInitDirectory)?;
+    Ok(InitArgs { dir, force })
+}
+
 fn print_root_help() {
     println!(
         "\
@@ -86,8 +128,9 @@ keydock — multi-tenant key-value HTTP service
 
 Usage:
   keydock serve [options]
+  keydock init [options] <DIR>
 
-Run `keydock serve --help` for serve options.
+Run `keydock serve --help` or `keydock init --help` for details.
 "
     );
 }
@@ -101,6 +144,23 @@ Options:
   -c, --config <PATH>   Path to TOML config file
       --listen <ADDR>     Socket address to listen on (overrides config)
       --data-dir <PATH>   Data directory (overrides config)
+  -h, --help            Show this help
+"
+    );
+}
+
+fn print_init_help() {
+    println!(
+        "\
+keydock init
+
+Creates a new keydock.toml under <DIR> (and <DIR>/data) with default settings and a generated root_key.
+
+Arguments:
+  <DIR>                 Instance directory (created if missing)
+
+Options:
+      --force           Overwrite an existing keydock.toml
   -h, --help            Show this help
 "
     );

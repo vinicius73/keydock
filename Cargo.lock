@@ -1193,6 +1193,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_urlencoded",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1204,8 +1205,11 @@ name = "keydock-config"
 version = "0.1.0-alpha"
 dependencies = [
  "lexopt",
+ "pretty_assertions",
+ "rstest",
  "secrecy",
  "serde",
+ "tempfile",
  "thiserror",
  "toml",
  "tracing",
