@@ -53,6 +53,11 @@ pub fn bad_request() -> Response {
 }
 
 #[instrument(skip_all)]
+pub fn not_acceptable() -> Response {
+    json_error(StatusCode::NOT_ACCEPTABLE, "not_acceptable")
+}
+
+#[instrument(skip_all)]
 pub fn service_unavailable() -> Response {
     json_error(StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
 }

@@ -1,18 +1,21 @@
 use axum::Form;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::header;
-use axum::http::{HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use keydock_domain::value::ValueKind;
 use keydock_domain::{BucketId, BucketPolicy, Permission, SigningKey};
 use keydock_state::AppState;
 use keydock_usecase::hash_credential;
+use keydock_usecase::{KeyService, ListEntry, ListOptsInput, ResolvedIdentity};
 use secrecy::ExposeSecret;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde_json::json;
 use tracing::instrument;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::error::{bad_request, internal_error, map_use_case_repo_err, not_found};
+use crate::error::{bad_request, internal_error, map_use_case_repo_err, not_acceptable, not_found};
 use crate::extract::BucketAuth;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -34,10 +37,29 @@ pub struct UpdatePolicyForm {
     pub default_ttl: Option<u64>,
 }
 
-/// JSON shape returned by [`list_bucket`].
-#[derive(Debug, Serialize, ToSchema)]
-pub struct ListBucketResponse {
-    pub keys: Vec<String>,
+/// Query parameters for `GET /{bucket}/` (listing).
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct ListBucketParams {
+    /// Restrict listing to keys starting with this byte prefix (UTF-8 string from query).
+    pub prefix: Option<String>,
+    /// Maximum number of keys to return (default 10000).
+    pub limit: Option<usize>,
+    /// Number of keys to skip after ordering and expiry filter (default 0).
+    pub skip: Option<usize>,
+    /// When `true`, iterate in reverse lexicographic order.
+    pub reverse: Option<bool>,
+    /// When `true`, include values in the response body.
+    pub values: Option<bool>,
+    /// Response format: `text`, `json`, or `jsonl` (overrides `Accept` when set).
+    pub format: Option<String>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ListFormat {
+    Text,
+    Json,
+    Jsonl,
 }
 
 fn none_if_empty(s: Option<String>) -> Option<String> {
@@ -61,6 +83,164 @@ fn recompute_anonymous_access(policy: &BucketPolicy) -> Permission {
         enumerate: !has_r,
         delete: !has_s && !has_r && !has_w,
     }
+}
+
+/// Intersects token scope prefix with optional `?prefix=` (incompatible combinations return `None`).
+fn combine_scoped_prefix(scope: &[u8], requested: Option<&[u8]>) -> Option<Vec<u8>> {
+    match requested {
+        None => Some(scope.to_vec()),
+        Some(req) => {
+            if req.starts_with(scope) {
+                Some(req.to_vec())
+            } else if scope.starts_with(req) {
+                Some(scope.to_vec())
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn resolve_list_format(
+    params: &ListBucketParams,
+    headers: &HeaderMap,
+) -> Result<ListFormat, Response> {
+    if let Some(ref f) = params.format {
+        return match f.to_ascii_lowercase().as_str() {
+            "text" => Ok(ListFormat::Text),
+            "json" => Ok(ListFormat::Json),
+            "jsonl" => Ok(ListFormat::Jsonl),
+            _ => Err(not_acceptable()),
+        };
+    }
+    if let Some(accept) = headers.get(header::ACCEPT).and_then(|h| h.to_str().ok()) {
+        if accept.contains("application/json") {
+            return Ok(ListFormat::Json);
+        }
+        if accept.contains("application/x-ndjson") || accept.contains("application/ndjson") {
+            return Ok(ListFormat::Jsonl);
+        }
+        if accept.contains("text/plain") {
+            return Ok(ListFormat::Text);
+        }
+    }
+    Ok(ListFormat::Text)
+}
+
+fn key_to_json_string(key: &keydock_domain::Key) -> String {
+    String::from_utf8_lossy(key.as_bytes()).into_owned()
+}
+
+fn escape_text_segment(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+}
+
+fn stored_value_to_json(v: &keydock_domain::StoredValue) -> Result<serde_json::Value, Response> {
+    match v.kind {
+        ValueKind::Json => serde_json::from_slice(v.payload.as_ref()).map_err(|_| internal_error()),
+        ValueKind::Int64 => {
+            let s = std::str::from_utf8(v.payload.as_ref()).map_err(|_| internal_error())?;
+            let n: i64 = s.trim().parse().map_err(|_| internal_error())?;
+            Ok(json!(n))
+        }
+        ValueKind::Float64 => {
+            let s = std::str::from_utf8(v.payload.as_ref()).map_err(|_| internal_error())?;
+            let n: f64 = s.trim().parse().map_err(|_| internal_error())?;
+            Ok(serde_json::Number::from_f64(n)
+                .map(serde_json::Value::Number)
+                .ok_or_else(internal_error)?)
+        }
+        ValueKind::Utf8 => {
+            let s = std::str::from_utf8(v.payload.as_ref()).map_err(|_| internal_error())?;
+            Ok(json!(s))
+        }
+        ValueKind::Raw => Ok(serde_json::Value::Array(
+            v.payload
+                .iter()
+                .copied()
+                .map(serde_json::Value::from)
+                .collect(),
+        )),
+    }
+}
+
+fn list_content_type(fmt: ListFormat) -> &'static str {
+    match fmt {
+        ListFormat::Text => "text/plain; charset=utf-8",
+        ListFormat::Json => "application/json",
+        ListFormat::Jsonl => "application/x-ndjson",
+    }
+}
+
+fn render_list_body(
+    fmt: ListFormat,
+    entries: &[ListEntry],
+    include_values: bool,
+) -> Result<Vec<u8>, Response> {
+    match fmt {
+        ListFormat::Text => render_list_text(entries, include_values),
+        ListFormat::Json => render_list_json(entries, include_values),
+        ListFormat::Jsonl => render_list_jsonl(entries, include_values),
+    }
+}
+
+fn render_list_text(entries: &[ListEntry], include_values: bool) -> Result<Vec<u8>, Response> {
+    let mut out = String::new();
+    for (i, row) in entries.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let key_str = key_to_json_string(&row.key);
+        let esc_key = escape_text_segment(&key_str);
+        if include_values {
+            let val = row.value.as_ref().ok_or_else(internal_error)?;
+            let val_str = String::from_utf8_lossy(val.payload.as_ref()).into_owned();
+            let esc_val = escape_text_segment(&val_str);
+            out.push_str(&esc_key);
+            out.push('=');
+            out.push_str(&esc_val);
+        } else {
+            out.push_str(&esc_key);
+        }
+    }
+    Ok(out.into_bytes())
+}
+
+fn render_list_json(entries: &[ListEntry], include_values: bool) -> Result<Vec<u8>, Response> {
+    let v = if include_values {
+        let mut rows = Vec::with_capacity(entries.len());
+        for row in entries {
+            let k = key_to_json_string(&row.key);
+            let val = row.value.as_ref().ok_or_else(internal_error)?;
+            let jv = stored_value_to_json(val)?;
+            rows.push(json!([k, jv]));
+        }
+        serde_json::Value::Array(rows)
+    } else {
+        let keys: Vec<String> = entries.iter().map(|r| key_to_json_string(&r.key)).collect();
+        json!(keys)
+    };
+    serde_json::to_vec(&v).map_err(|_| internal_error())
+}
+
+fn render_list_jsonl(entries: &[ListEntry], include_values: bool) -> Result<Vec<u8>, Response> {
+    let mut buf: Vec<u8> = Vec::new();
+    for row in entries {
+        let line = if include_values {
+            let k = key_to_json_string(&row.key);
+            let val = row.value.as_ref().ok_or_else(internal_error)?;
+            let jv = stored_value_to_json(val)?;
+            json!([k, jv])
+        } else {
+            json!(key_to_json_string(&row.key))
+        };
+        let mut chunk = serde_json::to_vec(&line).map_err(|_| internal_error())?;
+        chunk.push(b'\n');
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
 }
 
 #[utoipa::path(
@@ -149,24 +329,64 @@ pub async fn create_bucket(
     path = "/{bucket}/",
     params(
         ("bucket" = String, Path, description = "Bucket id"),
+        ListBucketParams,
     ),
     responses(
-        (status = 200, description = "Key listing", body = ListBucketResponse),
+        (status = 200, description = "Key listing (format from ?format= or Accept: text/plain, application/json, application/x-ndjson)"),
         (status = 400, description = "Bad request", body = crate::error::ErrorBody),
         (status = 401, description = "Unauthorized", body = crate::error::ErrorBody),
         (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
         (status = 404, description = "Bucket not found", body = crate::error::ErrorBody),
+        (status = 406, description = "Unknown format", body = crate::error::ErrorBody),
         (status = 500, description = "Internal error", body = crate::error::ErrorBody),
     ),
     tag = "buckets"
 )]
 #[instrument(skip_all, name = "buckets::list_bucket")]
 pub async fn list_bucket(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     auth: BucketAuth,
-) -> Result<axum::Json<ListBucketResponse>, Response> {
+    Query(params): Query<ListBucketParams>,
+    headers: HeaderMap,
+) -> Result<Response, Response> {
     auth.require_enumerate()?;
-    Ok(axum::Json(ListBucketResponse { keys: vec![] }))
+    let fmt = resolve_list_format(&params, &headers)?;
+    let include_values = params.values.unwrap_or(false);
+
+    let prefix_for_repo: Option<Vec<u8>> = match &auth.identity {
+        ResolvedIdentity::Scoped { key_prefix, .. } if !key_prefix.is_empty() => {
+            let req = params.prefix.as_deref().map(str::as_bytes);
+            match combine_scoped_prefix(key_prefix, req) {
+                Some(p) => Some(p),
+                None => {
+                    let body = render_list_body(fmt, &[], include_values)?;
+                    let ct = list_content_type(fmt);
+                    let hv = HeaderValue::from_str(ct).map_err(|_| internal_error())?;
+                    return Ok((StatusCode::OK, [(header::CONTENT_TYPE, hv)], body).into_response());
+                }
+            }
+        }
+        _ => params.prefix.as_ref().map(|s| s.as_bytes().to_vec()),
+    };
+
+    let entries = KeyService::list(
+        state.keys().as_ref(),
+        state.clock().as_ref(),
+        &auth.bucket_id,
+        ListOptsInput {
+            prefix: prefix_for_repo,
+            limit: params.limit,
+            skip: params.skip,
+            reverse: params.reverse,
+            include_values: Some(include_values),
+        },
+    )
+    .map_err(map_use_case_repo_err)?;
+
+    let body = render_list_body(fmt, &entries, include_values)?;
+    let ct = list_content_type(fmt);
+    let hv = HeaderValue::from_str(ct).map_err(|_| internal_error())?;
+    Ok((StatusCode::OK, [(header::CONTENT_TYPE, hv)], body).into_response())
 }
 
 #[utoipa::path(
