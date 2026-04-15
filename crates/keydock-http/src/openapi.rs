@@ -3,7 +3,7 @@ use utoipa::OpenApi;
 use crate::error::{ErrorBody, ErrorDetail};
 use crate::routes::buckets::{self, CreateBucketForm, ListBucketParams, UpdatePolicyForm};
 use crate::routes::health::{self, HealthResponse};
-use crate::routes::keys::{self, PatchKeyParams, PutKeyParams};
+use crate::routes::keys::{self, TtlQuery};
 use crate::routes::tokens::{self, AccessTokenResponse, CreateTokenForm};
 use crate::routes::txn::{self, TxnCmd, TxnItem, TxnRequest};
 
@@ -28,8 +28,7 @@ use crate::routes::txn::{self, TxnCmd, TxnItem, TxnRequest};
         HealthResponse,
         ErrorBody,
         ErrorDetail,
-        PutKeyParams,
-        PatchKeyParams,
+        TtlQuery,
         TxnRequest,
         TxnItem,
         TxnCmd,

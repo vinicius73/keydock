@@ -2,9 +2,8 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
-use keydock_domain::CounterOp;
-use keydock_domain::StoredValue;
 use keydock_domain::value::ValueKind;
+use keydock_domain::{CounterOp, StoredValue};
 use keydock_state::AppState;
 use keydock_usecase::KeyService;
 use serde::Deserialize;
@@ -37,18 +36,10 @@ fn stored_value_response(value: &StoredValue) -> Result<Response, Response> {
         .into_response())
 }
 
-/// Query parameters for `PUT`/`POST /{bucket}/{key}`.
+/// Query parameters for key write operations (`PUT`/`POST`/`PATCH /{bucket}/{key}`).
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 #[into_params(parameter_in = Query)]
-pub struct PutKeyParams {
-    /// TTL in seconds (overrides bucket default when set).
-    pub ttl: Option<u64>,
-}
-
-/// Query parameters for `PATCH /{bucket}/{key}` (counter).
-#[derive(Debug, Deserialize, IntoParams, ToSchema)]
-#[into_params(parameter_in = Query)]
-pub struct PatchKeyParams {
+pub struct TtlQuery {
     /// TTL in seconds (overrides bucket default when set).
     pub ttl: Option<u64>,
 }
@@ -102,7 +93,7 @@ pub async fn get_key(
     params(
         ("bucket" = String, Path, description = "Bucket id"),
         ("key" = String, Path, description = "Key (percent-encoded in the path)"),
-        PutKeyParams,
+        TtlQuery,
     ),
     responses(
         (status = 200, description = "Stored value echoed (Content-Type depends on inferred kind)"),
@@ -121,7 +112,7 @@ pub async fn put_key(
     State(state): State<AppState>,
     auth: BucketAuth,
     Path((_bucket, key)): Path<(String, String)>,
-    Query(params): Query<PutKeyParams>,
+    Query(params): Query<TtlQuery>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Response> {
@@ -191,7 +182,7 @@ pub async fn delete_key(
     params(
         ("bucket" = String, Path, description = "Bucket id"),
         ("key" = String, Path, description = "Key (percent-encoded in the path)"),
-        PatchKeyParams,
+        TtlQuery,
     ),
     request_body(content = String, description = "Counter delta: +N or -N (integer or float)"),
     responses(
@@ -208,7 +199,7 @@ pub async fn patch_key(
     State(state): State<AppState>,
     auth: BucketAuth,
     Path((_bucket, key)): Path<(String, String)>,
-    Query(params): Query<PatchKeyParams>,
+    Query(params): Query<TtlQuery>,
     body: Bytes,
 ) -> Result<Response, Response> {
     let key_dom = parse_percent_encoded_key(&key)?;
