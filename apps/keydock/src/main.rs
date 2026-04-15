@@ -2,6 +2,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[cfg(unix)]
 use tokio::signal::unix::{SignalKind, signal};
@@ -9,6 +10,7 @@ use tokio::signal::unix::{SignalKind, signal};
 use anyhow::Context;
 use metrics_exporter_prometheus::PrometheusBuilder;
 use tokio::net::TcpListener;
+use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
 use keydock_config::{CliError, Command, Config, ServeArgs, write_init_config};
@@ -75,6 +77,10 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         FjallStore::open(&config.paths.data_dir)
             .with_context(|| format!("open store at {}", config.paths.data_dir.display()))?,
     );
+    tracing::info!(
+        data_dir = %config.paths.data_dir.display(),
+        "fjall storage opened"
+    );
     let buckets: Arc<dyn BucketRepository> = store.clone();
     let keys: Arc<dyn KeyRepository> = store.clone();
     let clock: Arc<dyn keydock_support::Clock> = Arc::new(SystemClock);
@@ -91,11 +97,25 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
 
     tracing::info!(%addr, "listening");
 
+    let gc_cancel = CancellationToken::new();
+    let gc_interval_secs = config.gc.interval_secs;
+    let sweeper = store.build_gc_sweeper(Duration::from_secs(gc_interval_secs));
+    tokio::spawn(sweeper.run(gc_cancel.clone()));
+    tracing::info!(
+        interval_secs = gc_interval_secs,
+        "gc background sweeper spawned"
+    );
+
     axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            gc_cancel.cancel();
+            tracing::info!("gc cancellation requested");
+        })
         .await
         .context("server")?;
 
+    tracing::info!("http server stopped");
     Ok(())
 }
 

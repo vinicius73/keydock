@@ -1,6 +1,7 @@
 //! Temporary token lifecycle and scope (HTTP integration).
 
 use keydock_testkit::{BucketSetup, PolicyPatch, TestContext, TokenSetup};
+use pretty_assertions::assert_eq;
 use serde_json::{Value, json};
 
 #[track_caller]
@@ -35,7 +36,7 @@ async fn create_token_requires_admin() {
     ok.assert_status_ok();
     let body: Value = ok.json();
     let access = access_token_str(&body).to_string();
-    assert!(access.contains('.'));
+    assert_eq!(access.contains('.'), true);
     ok.assert_json(&json!({
         "access_token": access
     }));

@@ -1,4 +1,8 @@
+use std::fs;
+use std::io::Write;
 use std::net::SocketAddr;
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use secrecy::{ExposeSecret, SecretString};
@@ -71,6 +75,9 @@ pub struct Config {
     /// Root key for hashing API credentials at rest (HMAC-SHA256). Override in production.
     #[serde(default = "default_root_key")]
     pub root_key: LoadedSecret,
+    /// Background garbage collection (expired keys in the `data` keyspace).
+    #[serde(default)]
+    pub gc: GcConfig,
 }
 
 impl std::fmt::Debug for Config {
@@ -80,6 +87,7 @@ impl std::fmt::Debug for Config {
             .field("paths", &self.paths)
             .field("log_json", &self.log_json)
             .field("root_key", &"[REDACTED]")
+            .field("gc", &self.gc)
             .finish()
     }
 }
@@ -100,6 +108,26 @@ pub struct PathsConfig {
     pub data_dir: PathBuf,
 }
 
+/// TTL sweeper: periodically deletes expired key entries from storage.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GcConfig {
+    /// Interval between full scans of the `data` keyspace (seconds).
+    #[serde(default = "default_gc_interval_secs")]
+    pub interval_secs: u64,
+}
+
+fn default_gc_interval_secs() -> u64 {
+    60
+}
+
+impl Default for GcConfig {
+    fn default() -> Self {
+        Self {
+            interval_secs: default_gc_interval_secs(),
+        }
+    }
+}
+
 fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8080))
 }
@@ -116,6 +144,7 @@ impl Default for Config {
             },
             log_json: false,
             root_key: default_root_key(),
+            gc: GcConfig::default(),
         }
     }
 }
@@ -123,7 +152,7 @@ impl Default for Config {
 impl Config {
     #[instrument(skip_all, fields(path = %path.display()))]
     pub fn load_from_file(path: &std::path::Path) -> Result<Self, ConfigError> {
-        let raw = std::fs::read_to_string(path).map_err(|source| ConfigError::Io {
+        let raw = fs::read_to_string(path).map_err(|source| ConfigError::Io {
             path: path.to_path_buf(),
             source,
         })?;
@@ -152,9 +181,6 @@ impl Config {
 /// `paths.data_dir` is stored as an **absolute** path so `keydock serve -c …` works from any cwd.
 #[instrument(skip_all, fields(instance_dir = %instance_dir.display(), force = force))]
 pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, InitError> {
-    use std::fs;
-    use std::io::Write;
-
     if instance_dir.exists() && !instance_dir.is_dir() {
         return Err(InitError::NotADirectory {
             path: instance_dir.to_path_buf(),
@@ -195,6 +221,7 @@ pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, In
         },
         log_json: false,
         root_key: default_root_key(),
+        gc: GcConfig::default(),
     };
 
     let toml_str = toml::to_string_pretty(&config)?;
@@ -224,7 +251,6 @@ pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, In
 
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(&config_path, fs::Permissions::from_mode(0o600)).map_err(|e| {
             InitError::Io {
                 path: config_path.clone(),
@@ -314,6 +340,7 @@ mod tests {
             loaded.paths.data_dir,
             instance.join("data").canonicalize().unwrap()
         );
+        assert_eq!(loaded.gc.interval_secs, 60);
     }
 
     #[test]
@@ -322,7 +349,7 @@ mod tests {
         let instance = dir.path().join("instance");
         write_init_config(&instance, false).expect("first write");
         let err = write_init_config(&instance, false).unwrap_err();
-        assert!(matches!(err, InitError::AlreadyExists { .. }));
+        assert_eq!(matches!(err, InitError::AlreadyExists { .. }), true);
     }
 
     #[rstest]
@@ -334,6 +361,6 @@ mod tests {
         write_init_config(&instance, first_force).expect("first write");
         let path = write_init_config(&instance, true).expect("second write with force");
         let loaded = Config::load_from_file(&path).expect("load");
-        assert!(!loaded.root_key.expose_bytes().is_empty());
+        assert_eq!(loaded.root_key.expose_bytes().is_empty(), false);
     }
 }

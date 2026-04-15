@@ -11,7 +11,7 @@ use keydock_usecase::{KeyService, ListEntry, ListOptsInput, ResolvedIdentity};
 use secrecy::ExposeSecret;
 use serde::Deserialize;
 use serde_json::json;
-use tracing::instrument;
+use tracing::{debug, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -359,6 +359,10 @@ pub async fn list_bucket(
             match combine_scoped_prefix(key_prefix, req) {
                 Some(p) => Some(p),
                 None => {
+                    debug!(
+                        bucket = %auth.bucket_id.as_str(),
+                        "bucket listing empty (token prefix incompatible with query prefix)"
+                    );
                     let body = render_list_body(fmt, &[], include_values)?;
                     let ct = list_content_type(fmt);
                     let hv = HeaderValue::from_str(ct).map_err(|_| internal_error())?;
@@ -383,9 +387,16 @@ pub async fn list_bucket(
     )
     .map_err(map_use_case_repo_err)?;
 
+    let entry_count = entries.len();
     let body = render_list_body(fmt, &entries, include_values)?;
     let ct = list_content_type(fmt);
     let hv = HeaderValue::from_str(ct).map_err(|_| internal_error())?;
+    debug!(
+        bucket = %auth.bucket_id.as_str(),
+        entry_count,
+        include_values,
+        "bucket listing completed"
+    );
     Ok((StatusCode::OK, [(header::CONTENT_TYPE, hv)], body).into_response())
 }
 

@@ -20,10 +20,10 @@ fn init_creates_config_and_second_run_fails_without_force() {
         .stderr(Stdio::null())
         .status()
         .expect("spawn keydock init");
-    assert!(status.success(), "first init should succeed");
+    assert_eq!(status.success(), true, "first init should succeed");
 
     let config_path = instance.join("keydock.toml");
-    assert!(config_path.is_file());
+    assert_eq!(config_path.is_file(), true);
     let loaded = Config::load_from_file(&config_path).expect("parse config");
     assert_eq!(
         loaded.paths.data_dir,
@@ -36,8 +36,9 @@ fn init_creates_config_and_second_run_fails_without_force() {
         .stderr(Stdio::null())
         .status()
         .expect("spawn keydock init again");
-    assert!(
-        !status2.success(),
+    assert_eq!(
+        status2.success(),
+        false,
         "second init without --force should fail"
     );
 }
@@ -47,14 +48,15 @@ fn init_force_overwrites_existing_file() {
     let dir = tempfile::tempdir().expect("tempdir");
     let instance = dir.path().join("kd2");
 
-    assert!(
+    assert_eq!(
         Command::new(keydock_bin())
             .args(["init", instance.to_str().expect("utf8 path")])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
             .expect("spawn")
-            .success()
+            .success(),
+        true
     );
 
     let config_path = instance.join("keydock.toml");
@@ -66,7 +68,7 @@ fn init_force_overwrites_existing_file() {
         .stderr(Stdio::null())
         .status()
         .expect("spawn");
-    assert!(status.success());
+    assert_eq!(status.success(), true);
 
     let second = Config::load_from_file(&config_path).expect("load");
     assert_ne!(
@@ -84,7 +86,7 @@ fn init_requires_directory_argument() {
         .stderr(Stdio::null())
         .status()
         .expect("spawn");
-    assert!(!status.success());
+    assert_eq!(status.success(), false);
 }
 
 #[test]
@@ -92,10 +94,11 @@ fn missing_subcommand_prints_usage() {
     let output = Command::new(keydock_bin())
         .output()
         .expect("spawn keydock with no args");
-    assert!(!output.status.success());
+    assert_eq!(output.status.success(), false);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
+    assert_eq!(
         stderr.contains("serve") && stderr.contains("init"),
+        true,
         "stderr should mention subcommands: {stderr}"
     );
 }
