@@ -1,7 +1,7 @@
 use axum::Router;
 use axum::http::{HeaderValue, Method, StatusCode};
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use keydock_state::AppState;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tower_http::cors::{Any, CorsLayer};
@@ -9,7 +9,7 @@ use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 
 use crate::openapi::ApiDoc;
-use crate::routes::{buckets, health, keys};
+use crate::routes::{buckets, health, keys, tokens};
 
 /// Builds the HTTP service with standard middleware and routes.
 pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
@@ -20,6 +20,7 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
             Method::GET,
             Method::POST,
             Method::PUT,
+            Method::PATCH,
             Method::DELETE,
             Method::OPTIONS,
         ])
@@ -48,13 +49,21 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
                 }
             }),
         )
+        .route("/", post(buckets::create_bucket))
+        .route("/{bucket}/tokens/", post(tokens::create_token))
         .route(
             "/{bucket}/{key}",
             get(keys::get_key)
-                .post(keys::put_key)
-                .delete(keys::delete_key),
+                .put(keys::put_key)
+                .delete(keys::delete_key)
+                .patch(keys::patch_key),
         )
-        .route("/{bucket}", get(buckets::list_bucket))
+        .route(
+            "/{bucket}",
+            get(buckets::list_bucket)
+                .patch(buckets::update_policy)
+                .delete(buckets::delete_bucket),
+        )
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

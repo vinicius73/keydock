@@ -9,6 +9,8 @@ pub trait BucketRepository: Send + Sync {
     fn get_policy(&self, bucket: &BucketId) -> Result<Option<BucketPolicy>, UseCaseError>;
 
     fn create_bucket(&self, id: &BucketId, policy: BucketPolicy) -> Result<(), UseCaseError>;
+
+    fn delete_bucket(&self, id: &BucketId) -> Result<(), UseCaseError>;
 }
 
 /// Persistence port for key-value payloads (implemented by `keydock-fjall`).
