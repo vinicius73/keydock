@@ -25,7 +25,10 @@ async fn create_token_requires_admin() {
     let forbidden = ctx.create_token(&bid, "w", &form).await;
     forbidden.assert_status_forbidden();
     forbidden.assert_json(&json!({
-        "error": "forbidden"
+        "error": {
+            "code": 403,
+            "message": "forbidden"
+        }
     }));
 
     let ok = ctx.create_token(&bid, "sec", &form).await;
@@ -57,9 +60,12 @@ async fn token_read_within_prefix() {
         .get(&format!("/{bid}/user:42:name"))
         .authorization_bearer(&access)
         .await;
-    ok.assert_status_ok();
+    ok.assert_status_not_found();
     ok.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }
 
@@ -84,7 +90,10 @@ async fn token_read_outside_prefix() {
         .await;
     response.assert_status_forbidden();
     response.assert_json(&json!({
-        "error": "forbidden"
+        "error": {
+            "code": 403,
+            "message": "forbidden"
+        }
     }));
 }
 
@@ -109,7 +118,10 @@ async fn token_expired() {
         .await;
     response.assert_status_unauthorized();
     response.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 }
 
@@ -145,7 +157,10 @@ async fn token_wrong_bucket() {
         .await;
     response.assert_status_unauthorized();
     response.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 }
 
@@ -173,9 +188,12 @@ async fn token_invalidated_after_signing_key_rotation() {
         .get(&format!("/{bid}/k1"))
         .authorization_bearer(&access)
         .await;
-    ok_before.assert_status_ok();
+    ok_before.assert_status_not_found();
     ok_before.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 
     let patch = ctx
@@ -190,7 +208,10 @@ async fn token_invalidated_after_signing_key_rotation() {
         .await;
     unauthorized.assert_status_unauthorized();
     unauthorized.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 
     let tok2 = ctx.create_token(&bid, "sec", &form).await;
@@ -206,8 +227,11 @@ async fn token_invalidated_after_signing_key_rotation() {
         .get(&format!("/{bid}/k1"))
         .authorization_bearer(&access2)
         .await;
-    ok_after.assert_status_ok();
+    ok_after.assert_status_not_found();
     ok_after.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }

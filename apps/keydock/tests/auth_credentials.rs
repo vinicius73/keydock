@@ -1,5 +1,6 @@
 //! Credential channel and permission matrix (HTTP integration).
 
+use axum::http::header;
 use keydock_testkit::{BucketSetup, TestContext, basic_auth_header};
 use serde_json::json;
 
@@ -14,9 +15,8 @@ async fn bearer_secret_key_grants_admin() {
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
-    response.assert_json(&json!({
-        "ok": true
-    }));
+    response.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
+    response.assert_text("");
 }
 
 #[tokio::test]
@@ -30,9 +30,8 @@ async fn bearer_write_key_grants_write() {
         .authorization_bearer("w")
         .await;
     ok.assert_status_ok();
-    ok.assert_json(&json!({
-        "ok": true
-    }));
+    ok.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
+    ok.assert_text("");
 
     let forbidden = ctx
         .server
@@ -41,7 +40,10 @@ async fn bearer_write_key_grants_write() {
         .await;
     forbidden.assert_status_forbidden();
     forbidden.assert_json(&json!({
-        "error": "forbidden"
+        "error": {
+            "code": 403,
+            "message": "forbidden"
+        }
     }));
 }
 
@@ -55,15 +57,21 @@ async fn bearer_read_key_grants_read() {
         .get(&format!("/{bid}/k1"))
         .authorization_bearer("r")
         .await;
-    ok.assert_status_ok();
+    ok.assert_status_not_found();
     ok.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 
     let unauthorized = ctx.server.get(&format!("/{bid}/k1")).await;
     unauthorized.assert_status_unauthorized();
     unauthorized.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 }
 
@@ -73,9 +81,12 @@ async fn query_param_access_token_works() {
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
     let response = ctx.server.get(&format!("/{bid}/k1?access_token=r")).await;
-    response.assert_status_ok();
+    response.assert_status_not_found();
     response.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }
 
@@ -85,9 +96,12 @@ async fn query_param_key_works() {
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
     let response = ctx.server.get(&format!("/{bid}/k1?key=r")).await;
-    response.assert_status_ok();
+    response.assert_status_not_found();
     response.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }
 
@@ -101,9 +115,12 @@ async fn basic_auth_works() {
         .get(&format!("/{bid}/k1"))
         .authorization(basic_auth_header("r"))
         .await;
-    response.assert_status_ok();
+    response.assert_status_not_found();
     response.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }
 
@@ -119,7 +136,10 @@ async fn wrong_credential_returns_401() {
         .await;
     response.assert_status_unauthorized();
     response.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 }
 
@@ -129,7 +149,10 @@ async fn missing_bucket_returns_404() {
     let response = ctx.server.get("/no-such-bucket/k").await;
     response.assert_status_not_found();
     response.assert_json(&json!({
-        "error": "not_found"
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }
 
@@ -139,10 +162,12 @@ async fn anonymous_public_bucket_read() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
 
     let response = ctx.server.get(&format!("/{bid}/k1")).await;
-    response.assert_status_ok();
-
+    response.assert_status_not_found();
     response.assert_json(&json!({
-        "ok": true
+        "error": {
+            "code": 404,
+            "message": "not_found"
+        }
     }));
 }
 
@@ -155,6 +180,9 @@ async fn anonymous_restricted_bucket_read() {
     response.assert_status_unauthorized();
 
     response.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 }

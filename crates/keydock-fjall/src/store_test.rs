@@ -1,10 +1,13 @@
 //! Integration-style tests for [`crate::FjallStore`] (filesystem-backed).
 
-use keydock_domain::{BucketId, BucketPolicy, Permission, SigningKey};
-use keydock_usecase::{BucketRepository, hash_credential};
+use bytes::Bytes;
+use keydock_domain::value::ValueKind;
+use keydock_domain::{BucketId, BucketPolicy, Key, Permission, SigningKey, StoredValue};
+use keydock_usecase::{BucketRepository, KeyRepository, hash_credential};
 use pretty_assertions::assert_eq;
 use secrecy::ExposeSecret;
 use tempfile::tempdir;
+use time::OffsetDateTime;
 
 use crate::FjallStore;
 
@@ -43,4 +46,36 @@ fn create_bucket_roundtrips_policy() {
             .as_ref()
             .map(|k| k.expose_secret().as_slice())
     );
+}
+
+#[test]
+fn kv_roundtrip_set_get_delete_isolated_by_bucket() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let b1 = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let b2 = BucketId::new("ffffffff-gggg-hhhh-iiii-jjjjjjjjjjjj".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"same-key")).expect("key");
+    let v = StoredValue::new(Bytes::from_static(b"hello"), ValueKind::Utf8).expect("value");
+    let exp = Some(OffsetDateTime::now_utc());
+    KeyRepository::set(&store, &b1, &k, v.clone(), exp).expect("set b1");
+    KeyRepository::set(&store, &b2, &k, v.clone(), None).expect("set b2");
+
+    let e1 = KeyRepository::get(&store, &b1, &k)
+        .expect("get")
+        .expect("some");
+    assert_eq!(e1.value, v);
+    assert_eq!(e1.expires_at.is_some(), true);
+
+    assert_eq!(KeyRepository::delete(&store, &b1, &k).expect("del"), true);
+    assert_eq!(KeyRepository::get(&store, &b1, &k).expect("get"), None);
+    assert_eq!(
+        KeyRepository::delete(&store, &b1, &k).expect("del again"),
+        false
+    );
+
+    let e2 = KeyRepository::get(&store, &b2, &k)
+        .expect("get b2")
+        .expect("some");
+    assert_eq!(e2.value, v);
+    assert_eq!(e2.expires_at, None);
 }

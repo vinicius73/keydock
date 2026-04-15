@@ -1,7 +1,9 @@
-use axum::Router;
-use axum::http::{HeaderValue, Method, StatusCode};
-use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::{
+    Router,
+    http::{HeaderValue, Method, StatusCode, header},
+    response::{IntoResponse, Response},
+    routing::{get, post},
+};
 use keydock_state::AppState;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tower_http::cors::{Any, CorsLayer};
@@ -9,8 +11,15 @@ use tower_http::trace::TraceLayer;
 use tracing::instrument;
 use utoipa::OpenApi;
 
+use crate::error::not_implemented;
 use crate::openapi::ApiDoc;
 use crate::routes::{buckets, health, keys, tokens};
+
+/// Placeholder until M5 exposes `GET /{bucket}` for bucket policy.
+#[instrument(skip_all, name = "router::get_bucket_reserved_for_m5")]
+async fn get_bucket_reserved_for_m5() -> Response {
+    not_implemented("GET /{bucket} reserved for M5")
+}
 
 /// Builds the HTTP service with standard middleware and routes.
 #[instrument(skip_all)]
@@ -42,7 +51,7 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
                     let metrics_data = prom.render();
                     (
                         [(
-                            axum::http::header::CONTENT_TYPE,
+                            header::CONTENT_TYPE,
                             HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
                         )],
                         metrics_data,
@@ -56,13 +65,15 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
         .route(
             "/{bucket}/{key}",
             get(keys::get_key)
+                .post(keys::put_key)
                 .put(keys::put_key)
                 .delete(keys::delete_key)
                 .patch(keys::patch_key),
         )
+        .route("/{bucket}/", get(buckets::list_bucket))
         .route(
             "/{bucket}",
-            get(buckets::list_bucket)
+            get(get_bucket_reserved_for_m5)
                 .patch(buckets::update_policy)
                 .delete(buckets::delete_bucket),
         )
@@ -75,17 +86,20 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
 struct JsonOpenApi(utoipa::openapi::OpenApi);
 
 impl IntoResponse for JsonOpenApi {
-    fn into_response(self) -> axum::response::Response {
+    fn into_response(self) -> Response {
         match serde_json::to_string(&self.0) {
             Ok(s) => (
                 [(
-                    axum::http::header::CONTENT_TYPE,
+                    header::CONTENT_TYPE,
                     HeaderValue::from_static("application/json"),
                 )],
                 s,
             )
                 .into_response(),
-            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+            Err(e) => {
+                tracing::error!(error = %e, "failed to serialize OpenAPI document");
+                StatusCode::INTERNAL_SERVER_ERROR.into_response()
+            }
         }
     }
 }
