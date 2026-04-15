@@ -72,10 +72,12 @@ fn hmac_sign(key: &[u8], data: &[u8]) -> Result<Vec<u8>, TokenError> {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+    use rstest::rstest;
+
     use keydock_domain::Permission;
 
     use super::*;
-    use pretty_assertions::assert_eq;
 
     fn test_signing_key() -> SigningKey {
         SigningKey::new(Box::new(b"test-signing-key-bytes!!".to_vec()))
@@ -105,6 +107,66 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
+    enum VerifyRejectionCase {
+        TamperedSignature,
+        Expired,
+        WrongBucket,
+        GenerationMismatch,
+        NoSigningKey,
+    }
+
+    impl VerifyRejectionCase {
+        fn expected(self) -> TokenError {
+            match self {
+                Self::TamperedSignature => TokenError::InvalidSignature,
+                Self::Expired => TokenError::Expired,
+                Self::WrongBucket => TokenError::BucketMismatch,
+                Self::GenerationMismatch => TokenError::GenerationMismatch,
+                Self::NoSigningKey => TokenError::NoSigningKey,
+            }
+        }
+
+        fn run(self) -> TokenError {
+            let bucket = BucketId::new("b1".to_string()).unwrap();
+            match self {
+                Self::NoSigningKey => {
+                    let mut policy = policy_with_key(0);
+                    policy.signing_key = None;
+                    verify("x.y", &policy, &bucket, OffsetDateTime::now_utc()).unwrap_err()
+                }
+                _ => {
+                    let claims = sample_claims(bucket.clone(), 0);
+                    let raw = mint(&claims, &test_signing_key()).unwrap();
+                    let policy = policy_with_key(0);
+                    let now_ok = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
+                    match self {
+                        Self::TamperedSignature => {
+                            let (payload_b64, _) = raw.split_once('.').unwrap();
+                            let wrong_sig = URL_SAFE_NO_PAD.encode([0u8; 32]);
+                            let tampered = format!("{payload_b64}.{wrong_sig}");
+                            verify(&tampered, &policy, &bucket, now_ok).unwrap_err()
+                        }
+                        Self::Expired => {
+                            let now = OffsetDateTime::from_unix_timestamp(2_100_000_000).unwrap();
+                            verify(&raw, &policy, &bucket, now).unwrap_err()
+                        }
+                        Self::WrongBucket => {
+                            let other = BucketId::new("b2".to_string()).unwrap();
+                            verify(&raw, &policy, &other, now_ok).unwrap_err()
+                        }
+                        Self::GenerationMismatch => {
+                            let mut p = policy_with_key(0);
+                            p.signing_key_generation = 1;
+                            verify(&raw, &p, &bucket, now_ok).unwrap_err()
+                        }
+                        Self::NoSigningKey => unreachable!(),
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn mint_verify_roundtrip() {
         let bucket = BucketId::new("b1".to_string()).unwrap();
@@ -120,61 +182,14 @@ mod tests {
         assert_eq!(out.permissions, claims.permissions);
     }
 
-    #[test]
-    fn verify_rejects_tampered_signature() {
-        let bucket = BucketId::new("b1".to_string()).unwrap();
-        let claims = sample_claims(bucket.clone(), 0);
-        let raw = mint(&claims, &test_signing_key()).unwrap();
-        let (payload_b64, _) = raw.split_once('.').unwrap();
-        let wrong_sig = URL_SAFE_NO_PAD.encode([0u8; 32]);
-        let tampered = format!("{payload_b64}.{wrong_sig}");
-        let policy = policy_with_key(0);
-        let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
-        let err = verify(&tampered, &policy, &bucket, now).unwrap_err();
-        assert_eq!(err, TokenError::InvalidSignature);
-    }
-
-    #[test]
-    fn verify_rejects_expired() {
-        let bucket = BucketId::new("b1".to_string()).unwrap();
-        let claims = sample_claims(bucket.clone(), 0);
-        let raw = mint(&claims, &test_signing_key()).unwrap();
-        let policy = policy_with_key(0);
-        let now = OffsetDateTime::from_unix_timestamp(2_100_000_000).unwrap();
-        let err = verify(&raw, &policy, &bucket, now).unwrap_err();
-        assert_eq!(err, TokenError::Expired);
-    }
-
-    #[test]
-    fn verify_rejects_wrong_bucket() {
-        let bucket = BucketId::new("b1".to_string()).unwrap();
-        let claims = sample_claims(bucket.clone(), 0);
-        let raw = mint(&claims, &test_signing_key()).unwrap();
-        let policy = policy_with_key(0);
-        let other = BucketId::new("b2".to_string()).unwrap();
-        let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
-        let err = verify(&raw, &policy, &other, now).unwrap_err();
-        assert_eq!(err, TokenError::BucketMismatch);
-    }
-
-    #[test]
-    fn verify_rejects_generation_mismatch() {
-        let bucket = BucketId::new("b1".to_string()).unwrap();
-        let claims = sample_claims(bucket.clone(), 0);
-        let raw = mint(&claims, &test_signing_key()).unwrap();
-        let mut policy = policy_with_key(0);
-        policy.signing_key_generation = 1;
-        let now = OffsetDateTime::from_unix_timestamp(1_800_000_000).unwrap();
-        let err = verify(&raw, &policy, &bucket, now).unwrap_err();
-        assert_eq!(err, TokenError::GenerationMismatch);
-    }
-
-    #[test]
-    fn verify_no_signing_key() {
-        let bucket = BucketId::new("b1".to_string()).unwrap();
-        let mut policy = policy_with_key(0);
-        policy.signing_key = None;
-        let err = verify("x.y", &policy, &bucket, OffsetDateTime::now_utc()).unwrap_err();
-        assert_eq!(err, TokenError::NoSigningKey);
+    #[rstest]
+    #[case::tampered(VerifyRejectionCase::TamperedSignature)]
+    #[case::expired(VerifyRejectionCase::Expired)]
+    #[case::wrong_bucket(VerifyRejectionCase::WrongBucket)]
+    #[case::generation_mismatch(VerifyRejectionCase::GenerationMismatch)]
+    #[case::no_signing_key(VerifyRejectionCase::NoSigningKey)]
+    fn verify_rejects_invalid_tokens(#[case] case: VerifyRejectionCase) {
+        let actual = case.run();
+        assert_eq!(actual, case.expected());
     }
 }

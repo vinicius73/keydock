@@ -149,15 +149,15 @@ mod tests {
         let rk = root_key();
         let now = OffsetDateTime::now_utc();
         let id = resolve(Some("w"), &p, &bucket, &rk, now).unwrap();
-        match id {
-            ResolvedIdentity::Scoped {
-                permissions,
-                key_prefix,
-            } => {
-                assert_eq!(permissions.write, true);
-                assert_eq!(key_prefix.len(), 0);
-            }
-            _ => panic!("expected Scoped"),
+        if let ResolvedIdentity::Scoped {
+            permissions,
+            key_prefix,
+        } = id
+        {
+            assert_eq!(permissions.write, true);
+            assert_eq!(key_prefix.len(), 0);
+        } else {
+            assert_eq!(false, true, "expected Scoped identity");
         }
     }
 
@@ -178,6 +178,10 @@ mod tests {
         let rk = root_key();
         let now = OffsetDateTime::now_utc();
         let err = resolve(Some("nope"), &p, &bucket, &rk, now).unwrap_err();
-        assert!(matches!(err, AuthError::InvalidCredential));
+        assert_eq!(
+            matches!(err, AuthError::InvalidCredential),
+            true,
+            "expected InvalidCredential"
+        );
     }
 }

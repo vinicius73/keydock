@@ -94,6 +94,8 @@ fn decode_query_value(value: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use axum::http::HeaderValue;
+    use pretty_assertions::assert_eq;
+    use rstest::rstest;
 
     use super::*;
 
@@ -129,38 +131,21 @@ mod tests {
         assert_eq!(c.as_str(), "alice");
     }
 
-    #[test]
-    fn extract_query_access_token() {
+    #[rstest]
+    #[case::access_token("access_token=qp-token", "qp-token")]
+    #[case::key_alias("key=key-alias", "key-alias")]
+    #[case::access_token_wins_over_key("key=first&access_token=second", "second")]
+    #[case::percent_encoded("access_token=hello%20world", "hello world")]
+    fn extract_query_cases(#[case] query: &str, #[case] expected: &str) {
         let h = HeaderMap::new();
-        let c = extract(&h, Some("access_token=qp-token")).expect("credential");
-        assert_eq!(c.as_str(), "qp-token");
-    }
-
-    #[test]
-    fn extract_query_key_alias() {
-        let h = HeaderMap::new();
-        let c = extract(&h, Some("key=key-alias")).expect("credential");
-        assert_eq!(c.as_str(), "key-alias");
-    }
-
-    #[test]
-    fn extract_query_access_token_over_key() {
-        let h = HeaderMap::new();
-        let c = extract(&h, Some("key=first&access_token=second")).expect("credential");
-        assert_eq!(c.as_str(), "second");
-    }
-
-    #[test]
-    fn extract_query_percent_encoded() {
-        let h = HeaderMap::new();
-        let c = extract(&h, Some("access_token=hello%20world")).expect("credential");
-        assert_eq!(c.as_str(), "hello world");
+        let c = extract(&h, Some(query)).expect("credential");
+        assert_eq!(c.as_str(), expected);
     }
 
     #[test]
     fn extract_missing_returns_none() {
         let h = HeaderMap::new();
-        assert!(extract(&h, None).is_none());
-        assert!(extract(&h, Some("other=1")).is_none());
+        assert_eq!(extract(&h, None).is_none(), true);
+        assert_eq!(extract(&h, Some("other=1")).is_none(), true);
     }
 }

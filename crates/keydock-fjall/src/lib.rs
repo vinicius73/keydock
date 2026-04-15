@@ -9,5 +9,8 @@ pub mod layout;
 pub mod repos;
 pub mod store;
 
+#[cfg(test)]
+mod store_test;
+
 pub use error::FjallError;
 pub use store::FjallStore;
