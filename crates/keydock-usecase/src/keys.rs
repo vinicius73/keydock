@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use keydock_domain::value::ValueKind;
-use keydock_domain::{BucketId, DomainError, Key, StoredValue};
+use keydock_domain::{BucketId, CounterOp, DomainError, Key, StoredValue};
 use keydock_support::Clock;
 use time::{Duration, OffsetDateTime};
 use tracing::instrument;
@@ -101,22 +101,73 @@ impl KeyService {
         ttl_override: Option<u64>,
         default_ttl: Option<u64>,
     ) -> Result<StoredValue, UseCaseError> {
+        let value = Self::infer_stored_value(body, content_type)?;
+        let expires_at = Self::resolve_ttl(clock, ttl_override, default_ttl)?;
+        repo.set(bucket, key, value.clone(), expires_at)?;
+        Ok(value)
+    }
+
+    /// Infers [`StoredValue`] from raw bytes and optional `Content-Type` (same rules as `set`).
+    #[instrument(skip_all, name = "KeyService::infer_stored_value")]
+    pub fn infer_stored_value(
+        body: Bytes,
+        content_type: Option<&str>,
+    ) -> Result<StoredValue, UseCaseError> {
         let kind = infer_value_kind(body.as_ref(), content_type);
-        let value = StoredValue::new(body, kind)?;
+        Ok(StoredValue::new(body, kind)?)
+    }
+
+    /// Resolves TTL seconds into an absolute expiry instant (`None` or `0` → no expiry).
+    #[instrument(skip_all, name = "KeyService::resolve_ttl")]
+    pub fn resolve_ttl(
+        clock: &dyn Clock,
+        ttl_override: Option<u64>,
+        default_ttl: Option<u64>,
+    ) -> Result<Option<OffsetDateTime>, UseCaseError> {
         let effective = ttl_override.or(default_ttl);
-        let expires_at = match effective {
-            None | Some(0) => None,
+        match effective {
+            None | Some(0) => Ok(None),
             Some(secs) => {
                 let secs_i64 = i64::try_from(secs).map_err(|_| {
                     UseCaseError::Domain(DomainError::InvalidTtl(
                         "ttl seconds out of supported range".into(),
                     ))
                 })?;
-                Some(clock.now_utc() + Duration::seconds(secs_i64))
+                let at = clock
+                    .now_utc()
+                    .checked_add(Duration::seconds(secs_i64))
+                    .ok_or_else(|| {
+                        UseCaseError::Domain(DomainError::InvalidTtl(
+                            "ttl resulting instant out of range".into(),
+                        ))
+                    })?;
+                Ok(Some(at))
             }
-        };
-        repo.set(bucket, key, value.clone(), expires_at)?;
-        Ok(value)
+        }
+    }
+
+    /// Atomically applies a counter delta; storage enforces numeric semantics and locking.
+    #[instrument(
+        skip_all,
+        name = "KeyService::increment",
+        fields(
+            bucket = %bucket.as_str(),
+            key_len = key.as_bytes().len(),
+            has_ttl_override = ttl_override.is_some(),
+            has_default_ttl = default_ttl.is_some(),
+        )
+    )]
+    pub fn increment(
+        repo: &dyn KeyRepository,
+        clock: &dyn Clock,
+        bucket: &BucketId,
+        key: &Key,
+        op: CounterOp,
+        ttl_override: Option<u64>,
+        default_ttl: Option<u64>,
+    ) -> Result<StoredValue, UseCaseError> {
+        let expires_at = Self::resolve_ttl(clock, ttl_override, default_ttl)?;
+        repo.increment(bucket, key, op, expires_at)
     }
 
     #[instrument(
@@ -216,6 +267,24 @@ mod tests {
             _opts: &ListOpts<'_>,
         ) -> Result<Vec<ListEntry>, UseCaseError> {
             Ok(vec![])
+        }
+
+        fn increment(
+            &self,
+            _bucket: &BucketId,
+            _key: &Key,
+            _op: CounterOp,
+            _expires_at: Option<OffsetDateTime>,
+        ) -> Result<StoredValue, UseCaseError> {
+            Err(UseCaseError::NotImplemented)
+        }
+
+        fn apply_batch(
+            &self,
+            _bucket: &BucketId,
+            _ops: &[crate::ports::TxnOp],
+        ) -> Result<(), UseCaseError> {
+            Err(UseCaseError::NotImplemented)
         }
     }
 
@@ -343,6 +412,24 @@ mod tests {
             _opts: &ListOpts<'_>,
         ) -> Result<Vec<ListEntry>, UseCaseError> {
             Ok(vec![])
+        }
+
+        fn increment(
+            &self,
+            _bucket: &BucketId,
+            _key: &Key,
+            _op: CounterOp,
+            _expires_at: Option<OffsetDateTime>,
+        ) -> Result<StoredValue, UseCaseError> {
+            Err(UseCaseError::NotImplemented)
+        }
+
+        fn apply_batch(
+            &self,
+            _bucket: &BucketId,
+            _ops: &[crate::ports::TxnOp],
+        ) -> Result<(), UseCaseError> {
+            Err(UseCaseError::NotImplemented)
         }
     }
 

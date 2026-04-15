@@ -3,9 +3,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
-use keydock_domain::{BucketId, BucketPolicy, Key, StoredValue};
+use keydock_domain::{BucketId, BucketPolicy, CounterOp, Key, StoredValue};
 use keydock_usecase::{
-    BucketRepository, KeyRepository, ListEntry, ListOpts, StoredEntry, UseCaseError,
+    BucketRepository, KeyRepository, ListEntry, ListOpts, StoredEntry, TxnOp, UseCaseError,
 };
 use time::OffsetDateTime;
 use tracing::instrument;
@@ -240,5 +240,25 @@ impl KeyRepository for FjallStore {
         }
 
         Ok(out)
+    }
+
+    #[instrument(
+        skip_all,
+        name = "FjallStore::increment",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
+    fn increment(
+        &self,
+        bucket: &BucketId,
+        key: &Key,
+        _op: CounterOp,
+        _expires_at: Option<OffsetDateTime>,
+    ) -> Result<StoredValue, UseCaseError> {
+        Err(UseCaseError::NotImplemented)
+    }
+
+    #[instrument(skip_all, name = "FjallStore::apply_batch", fields(bucket = %bucket.as_str()))]
+    fn apply_batch(&self, bucket: &BucketId, _ops: &[TxnOp]) -> Result<(), UseCaseError> {
+        Err(UseCaseError::NotImplemented)
     }
 }

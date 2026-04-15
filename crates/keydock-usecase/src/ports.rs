@@ -1,8 +1,21 @@
-use keydock_domain::{BucketId, BucketPolicy, Key, StoredValue};
+use keydock_domain::{BucketId, BucketPolicy, CounterOp, Key, StoredValue};
 use time::OffsetDateTime;
 
 use crate::UseCaseError;
 use crate::keys::StoredEntry;
+
+/// One step in an atomic multi-key transaction (`KeyRepository::apply_batch`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum TxnOp {
+    Set {
+        key: Key,
+        value: StoredValue,
+        expires_at: Option<OffsetDateTime>,
+    },
+    Delete {
+        key: Key,
+    },
+}
 
 /// Parameters for listing keys within a bucket (callers apply HTTP/query defaults via `KeyService::list`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,4 +62,16 @@ pub trait KeyRepository: Send + Sync {
     fn delete(&self, bucket: &BucketId, key: &Key) -> Result<bool, UseCaseError>;
 
     fn list(&self, bucket: &BucketId, opts: &ListOpts<'_>) -> Result<Vec<ListEntry>, UseCaseError>;
+
+    /// Atomically read-modify-write a numeric key (counter). Implemented with storage-level locking.
+    fn increment(
+        &self,
+        bucket: &BucketId,
+        key: &Key,
+        op: CounterOp,
+        expires_at: Option<OffsetDateTime>,
+    ) -> Result<StoredValue, UseCaseError>;
+
+    /// Apply multiple key operations atomically (all succeed or none).
+    fn apply_batch(&self, bucket: &BucketId, ops: &[TxnOp]) -> Result<(), UseCaseError>;
 }
