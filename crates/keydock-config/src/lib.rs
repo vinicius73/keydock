@@ -5,5 +5,8 @@
 pub mod cli;
 pub mod config;
 
-pub use cli::{CliError, Command, ServeArgs, parse};
-pub use config::{Config, ConfigError, HttpConfig, LoadedSecret, PathsConfig, ValidatedHttpConfig};
+pub use cli::{CliError, Command, InitArgs, ServeArgs, parse};
+pub use config::{
+    CONFIG_FILENAME, Config, ConfigError, HttpConfig, InitError, LoadedSecret, PathsConfig,
+    ValidatedHttpConfig, write_init_config,
+};

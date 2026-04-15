@@ -1,5 +1,5 @@
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -20,6 +20,35 @@ pub enum ConfigError {
         path: PathBuf,
         #[source]
         source: toml::de::Error,
+    },
+}
+
+/// Filename written by [`write_init_config`] inside the instance directory.
+pub const CONFIG_FILENAME: &str = "keydock.toml";
+
+#[derive(Debug, Error)]
+pub enum InitError {
+    #[error("instance path is not a directory: {path}")]
+    NotADirectory { path: PathBuf },
+
+    #[error("config file already exists: {path} (use --force to overwrite)")]
+    AlreadyExists { path: PathBuf },
+
+    #[error("failed to serialize config to TOML: {0}")]
+    Serialize(#[from] toml::ser::Error),
+
+    #[error("failed to initialize instance at {path}: {source}")]
+    Io {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+
+    #[error("failed to canonicalize data directory {path}: {source}")]
+    Canonicalize {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
     },
 }
 
@@ -61,7 +90,7 @@ pub struct HttpConfig {
     pub listen: SocketAddr,
 
     /// Optional separate scrape listener; when `None`, metrics share the main HTTP server.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metrics_listen: Option<SocketAddr>,
 }
 
@@ -117,6 +146,96 @@ impl Config {
     }
 }
 
+/// Creates `<instance_dir>/data`, writes `<instance_dir>/keydock.toml` with defaults and a new
+/// `root_key`, and returns the config file path.
+///
+/// `paths.data_dir` is stored as an **absolute** path so `keydock serve -c …` works from any cwd.
+#[instrument(skip_all, fields(instance_dir = %instance_dir.display(), force = force))]
+pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, InitError> {
+    use std::fs;
+    use std::io::Write;
+
+    if instance_dir.exists() && !instance_dir.is_dir() {
+        return Err(InitError::NotADirectory {
+            path: instance_dir.to_path_buf(),
+        });
+    }
+
+    fs::create_dir_all(instance_dir).map_err(|e| InitError::Io {
+        path: instance_dir.to_path_buf(),
+        source: e,
+    })?;
+
+    let config_path = instance_dir.join(CONFIG_FILENAME);
+    if config_path.exists() && !force {
+        return Err(InitError::AlreadyExists { path: config_path });
+    }
+
+    let data_dir_path = instance_dir.join("data");
+    fs::create_dir_all(&data_dir_path).map_err(|e| InitError::Io {
+        path: data_dir_path.clone(),
+        source: e,
+    })?;
+
+    let data_dir_canonical =
+        data_dir_path
+            .canonicalize()
+            .map_err(|source| InitError::Canonicalize {
+                path: data_dir_path.clone(),
+                source,
+            })?;
+
+    let config = Config {
+        http: HttpConfig {
+            listen: default_listen(),
+            metrics_listen: None,
+        },
+        paths: PathsConfig {
+            data_dir: data_dir_canonical,
+        },
+        log_json: false,
+        root_key: default_root_key(),
+    };
+
+    let toml_str = toml::to_string_pretty(&config)?;
+
+    let mut tmp = tempfile::NamedTempFile::new_in(instance_dir).map_err(|e| InitError::Io {
+        path: instance_dir.to_path_buf(),
+        source: e,
+    })?;
+    tmp.write_all(toml_str.as_bytes())
+        .map_err(|e| InitError::Io {
+            path: tmp.path().to_path_buf(),
+            source: e,
+        })?;
+    tmp.flush().map_err(|e| InitError::Io {
+        path: tmp.path().to_path_buf(),
+        source: e,
+    })?;
+    tmp.as_file().sync_all().map_err(|e| InitError::Io {
+        path: tmp.path().to_path_buf(),
+        source: e,
+    })?;
+
+    tmp.persist(&config_path).map_err(|e| InitError::Io {
+        path: config_path.clone(),
+        source: e.error,
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&config_path, fs::Permissions::from_mode(0o600)).map_err(|e| {
+            InitError::Io {
+                path: config_path.clone(),
+                source: e,
+            }
+        })?;
+    }
+
+    Ok(config_path)
+}
+
 /// HTTP-relevant, validated view of configuration (no secrets by default).
 #[derive(Debug, Clone)]
 pub struct ValidatedHttpConfig {
@@ -170,5 +289,51 @@ impl<'de> Deserialize<'de> for LoadedSecret {
 impl std::fmt::Debug for LoadedSecret {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("[REDACTED]")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use pretty_assertions::assert_eq;
+    use rstest::rstest;
+
+    use super::*;
+
+    #[test]
+    fn write_init_config_creates_round_trip() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let instance = dir.path().join("instance");
+        let config_path = write_init_config(&instance, false).expect("write_init_config");
+        assert_eq!(config_path, instance.join(CONFIG_FILENAME));
+
+        let loaded = Config::load_from_file(&config_path).expect("load");
+        assert_eq!(loaded.http.listen, default_listen());
+        assert_eq!(loaded.http.metrics_listen, None);
+        assert_eq!(loaded.log_json, false);
+        assert_eq!(
+            loaded.paths.data_dir,
+            instance.join("data").canonicalize().unwrap()
+        );
+    }
+
+    #[test]
+    fn write_init_config_fails_when_exists_without_force() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let instance = dir.path().join("instance");
+        write_init_config(&instance, false).expect("first write");
+        let err = write_init_config(&instance, false).unwrap_err();
+        assert!(matches!(err, InitError::AlreadyExists { .. }));
+    }
+
+    #[rstest]
+    #[case(true)]
+    #[case(false)]
+    fn write_init_config_force_overwrites(#[case] first_force: bool) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let instance = dir.path().join("instance");
+        write_init_config(&instance, first_force).expect("first write");
+        let path = write_init_config(&instance, true).expect("second write with force");
+        let loaded = Config::load_from_file(&path).expect("load");
+        assert!(!loaded.root_key.expose_bytes().is_empty());
     }
 }
