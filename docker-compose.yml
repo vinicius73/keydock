@@ -1,0 +1,11 @@
+services:
+  keydock:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - keydock-data:/var/lib/keydock/data
+      - ./config.example.toml:/etc/keydock/keydock.toml:ro
+
+volumes:
+  keydock-data:
