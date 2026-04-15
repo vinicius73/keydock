@@ -1,7 +1,82 @@
-[package]
-name = "keydock"
+[workspace]
+resolver = "3"
+members = [
+    "apps/keydock",
+    "crates/keydock-config",
+    "crates/keydock-domain",
+    "crates/keydock-fjall",
+    "crates/keydock-http",
+    "crates/keydock-state",
+    "crates/keydock-support",
+    "crates/keydock-testkit",
+    "crates/keydock-usecase",
+]
+
+[workspace.package]
 version = "0.1.0-alpha"
 edition = "2024"
 license = "AGPL-3.0-only"
+rust-version = "1.90"
 
-[dependencies]
+[workspace.dependencies]
+anyhow = "1"
+axum = { version = "0.8", features = ["http1", "http2", "macros", "tokio"] }
+bytes = "1"
+fjall = "3"
+hmac = { version = "0.13", features = ["zeroize"] }
+lexopt = "0.3"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+percent-encoding = "2.3"
+reqwest = { version = "0.13", features = ["json"] }
+secrecy = { version = "0.10", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.11"
+tempfile = "3"
+thiserror = "2"
+time = { version = "0.3", features = [
+    "serde",
+    "macros",
+    "formatting",
+    "parsing",
+] }
+tokio = { version = "1", features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "io-util",
+    "fs",
+    "time",
+    "signal",
+    "net",
+] }
+toml = "1"
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = [
+    "compression-gzip",
+    "cors",
+    "request-id",
+    "timeout",
+    "trace",
+    "normalize-path",
+] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+utoipa = { version = "5", features = ["axum_extras", "time"] }
+zeroize = { version = "1", features = ["derive"] }
+
+# Internal crates (path dependencies; versions follow workspace.package)
+keydock-config = { path = "crates/keydock-config" }
+keydock-domain = { path = "crates/keydock-domain" }
+keydock-fjall = { path = "crates/keydock-fjall" }
+keydock-http = { path = "crates/keydock-http" }
+keydock-state = { path = "crates/keydock-state" }
+keydock-support = { path = "crates/keydock-support" }
+keydock-testkit = { path = "crates/keydock-testkit" }
+keydock-usecase = { path = "crates/keydock-usecase" }
+
+# Dev / test
+axum-test = { version = "20", features = ["pretty-assertions"] }
+proptest = "1"
+rstest = "0.26"
