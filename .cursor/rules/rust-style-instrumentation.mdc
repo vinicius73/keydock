@@ -1,0 +1,188 @@
+---
+description: Tracing instrumentation and structured logging guidelines
+globs: "{crates,apps}/**/*.rs"
+---
+
+# Instrumentation & Logging Guidelines
+
+## Quick Reference
+
+**MUST** follow these mandatory practices:
+
+- **CRITICAL**: Logs must describe what happened, not what will happen (logs are written AFTER actions, not before)
+- Instrument public functions with `tracing::instrument`
+- **MUST** always use `skip_all` in `#[instrument]` attributes
+- Use structured logging with domain field names
+- Use `%` for Display types, `?` for Debug types
+- Include context fields in instrument attributes via `fields(...)`
+
+## Tracing Instrumentation
+
+**MUST** always instrument public functions with `tracing::instrument`:
+
+```rust
+// ✅ Good: Public function properly instrumented
+#[tracing::instrument(skip_all)]
+pub async fn put_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // instrumented function
+}
+
+// ❌ Bad: Public function without instrumentation
+pub async fn put_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // ❌ Missing #[tracing::instrument]
+    // function body
+}
+```
+
+### Instrumentation Guidelines
+
+**MUST** follow these instrumentation rules:
+
+- **MUST** always use `skip_all` to skip all parameters from automatic logging
+- **MUST** add `fields` to include important context in spans (explicitly specify what to log)
+- **MAY** use `name` to override the default span name
+- **MUST** instrument at the public API boundary, not internal helpers
+
+```rust
+// ✅ Good: Always use skip_all, add fields explicitly
+#[instrument(skip_all, fields(bucket = bucket, key = key))]
+pub async fn delete_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // implementation
+}
+
+// ✅ Good: skip_all with multiple context fields
+#[instrument(skip_all, fields(bucket = bucket, key = key, ttl_secs = ?ttl_secs))]
+pub async fn put_key_with_ttl(
+    bucket: &str,
+    key: &str,
+    ttl_secs: Option<u64>,
+) -> Result<(), keydock_usecase::UseCaseError> {
+    // implementation
+}
+
+// ✅ Good: Always use name with struct methods
+impl FooAction {
+  #[instrument(skip_all, name = "FooAction::execute" fields(bucket = bucket, key = key))]
+  pub async fn execute(
+      bucket: &str,
+      key: &str,
+  ) -> Result<(), keydock_usecase::UseCaseError> {
+      // implementation
+  }
+}
+
+// ❌ Bad: Using skip with specific parameters instead of skip_all
+#[instrument(skip(bucket, key), fields(bucket = bucket, key = key))]
+pub async fn delete_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // ❌ Should use skip_all instead
+}
+
+// ❌ Bad: Not using skip_all (will log all parameters automatically)
+#[instrument(fields(bucket = bucket, key = key))]
+pub async fn delete_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // ❌ Missing skip_all - parameters will be logged automatically
+}
+```
+
+## Structured Logging
+
+**MUST** use structured logging with consistent field names related to the domain:
+
+```rust
+info!(
+    bucket = bucket,
+    key = key,
+    "Key deleted"
+);
+```
+
+### When to Log - Critical Rule
+
+**MUST** follow this fundamental rule:
+
+> **Logs must describe what happened, not what will happen. Logs are written AFTER actions complete, not before.**
+
+Logs must record events that **have already occurred**, not intentions or future plans. This ensures logs reflect the actual system state and are useful for debugging and auditing.
+
+```rust
+// ✅ Good: Log AFTER the action completes
+pub async fn delete_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    perform_delete(bucket, key).await?;
+    info!(bucket = bucket, key = key, "Key deleted");
+    Ok(())
+}
+
+// ❌ Bad: Log BEFORE the action (intention, not fact)
+pub async fn delete_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    info!(bucket = bucket, key = key, "Deleting key"); // ❌ This hasn't happened yet!
+    perform_delete(bucket, key).await?;
+    Ok(())
+}
+```
+
+**More examples:**
+
+```rust
+// ✅ Good: Log after successful operation
+let data = fetch_data(id).await?;
+info!(resource_id = %id, "Data retrieved successfully");
+
+// ✅ Good: Log after state change
+update_status(conn, &mut resource).await?;
+info!(resource_id = %resource.id, status = %resource.status, "Status updated");
+
+// ✅ Good: Log after validation passes
+if !is_valid(&input) {
+    return Err(keydock_domain::DomainError::InvalidBucketId("...".to_string()).into());
+}
+info!(input_id = %input.id, "Input validated successfully");
+
+// ❌ Bad: Logging before action completes
+info!("Starting to process");  // ❌ Intention, not fact
+process().await?;
+
+// ❌ Bad: Logging before validation
+info!("Validating input");  // ❌ Intention, not fact
+if !is_valid(&input) {
+    return Err(keydock_domain::DomainError::InvalidBucketId("...".to_string()).into());
+}
+```
+
+**Exception:** Error logs can be placed immediately when an error occurs, as the error event has already happened:
+
+```rust
+// ✅ Good: Error log when error condition is detected (event has happened)
+if resource.status == Status::Invalid {
+    error!(resource_id = %resource.id, "Resource is invalid, cannot process");
+    return Err(keydock_usecase::UseCaseError::NotImplemented);
+}
+```
+
+### Logging Field Conventions
+
+**MUST** follow these logging conventions:
+
+- **MUST** use `%` for types implementing `Display` (strings, numbers, Uuid)
+- **MUST** use `?` for types implementing `Debug` (enums, complex structures)
+- **MUST** prefer short, consistent field names (e.g. `bucket`, `key`, `ttl_secs`)
+- **MUST** include context fields in `instrument` attributes:
+
+```rust
+#[instrument(skip_all, fields(bucket = bucket, key = key))]
+pub async fn get_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // function body
+}
+```
+
+### Log Levels
+
+- `error!` - For errors that require attention
+- `warn!` - For warnings and recoverable issues
+- `info!` - For important business events and state changes
+- `debug!` - For detailed debugging information
+- `trace!` - For very verbose tracing (use sparingly)
+
+## Related Rules
+
+- `.cursor/rules/rust-code-style.mdc` - Complete code style guidelines
+- `.cursor/rules/error-handling.mdc` - Error handling patterns (when logging errors)

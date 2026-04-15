@@ -1,0 +1,177 @@
+---
+description: Unit testing guidelines
+globs: "{crates,apps}/**/*_test.rs"
+---
+
+# Unit Testing Guidelines
+
+Test individual functions and modules in isolation. Place tests in the same file using `#[cfg(test)]`.
+
+## Related Rules
+
+This rule works together with:
+
+- `.cursor/rules/rust-code-style.mdc` - Code style patterns (formatting, imports, assertions with `pretty_assertions`)
+- `.cursor/rules/project-structure.mdc` - Project structure and file locations
+- `.cursor/rules/error-handling.mdc` - Error handling patterns (when testing error scenarios)
+- `.cursor/rules/rust-qa-loop.mdc` - QA validation process (after writing/modifying tests)
+
+## Basic Structure
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_function_name() {
+        // Test implementation
+    }
+}
+```
+
+## Using rstest for Parametrized Tests
+
+**Prefer `rstest` for testing multiple inputs:**
+
+```rust
+use rstest::*;
+use pretty_assertions::assert_eq;
+
+#[rstest]
+#[case("$1,234.56", Some(1234.56))]
+#[case("999.99", Some(999.99))]
+#[case("0.99", Some(0.99))]
+#[case("R$ 199.99", Some(199.99))]
+#[case("", None)]
+#[case("N/A", None)]
+fn test_parse_price_string(#[case] input: &str, #[case] expected: Option<f64>) {
+    assert_eq!(parse_price_string(input), expected);
+}
+
+#[rstest]
+#[case::basic("hello world", "hello world")]
+#[case::newlines("hello\nworld", "hello world")]
+#[case::tabs("hello\tworld", "hello world")]
+#[case::multiple_spaces("hello   world", "hello world")]
+#[case::leading_trailing("  hello world  ", "hello world")]
+#[case::empty("", "")]
+fn test_normalize_string(#[case] input: &str, #[case] expected: &str) {
+    assert_eq!(normalize_string(input), expected);
+}
+```
+
+## Integration tests (HTTP)
+
+For HTTP-level tests in this repo, prefer `apps/*/tests/*.rs` with `keydock_testkit::test_app()`
+and `axum_test::TestServer` (see `apps/keydock/tests/health.rs` for the established pattern).
+
+## Test Organization
+
+Group related tests with descriptive comments:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_basic_cases() {
+        // Basic functionality
+        assert_eq!(parse_price_string("$1,234.56"), Some(1234.56));
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // Edge cases and boundaries
+        assert_eq!(parse_price_string("123.45.67"), Some(123.45));
+        assert_eq!(parse_price_string("."), None);
+    }
+
+    #[test]
+    fn test_invalid_inputs() {
+        // Invalid inputs should return None
+        assert_eq!(parse_price_string("N/A"), None);
+        assert_eq!(parse_price_string("Free"), None);
+    }
+}
+```
+
+## Helper Functions
+
+Create helpers to reduce duplication:
+
+```rust
+#[cfg(test)]
+mod tests {
+    use super::AmazonPriceParser;
+    use scraper::Html;
+
+    fn parse_price_from(html: &str) -> Option<f64> {
+        let document = Html::parse_document(html);
+        AmazonPriceParser::new(&document, "hash").parse().unwrap()
+    }
+
+    #[test]
+    fn parses_combined_whole_and_fraction() {
+        let html = r#"
+            <span class="a-price aok-align-center">
+                <span class="a-price-symbol">R$</span>
+                <span class="a-price-whole">52<span class="a-price-decimal">,</span></span>
+                <span class="a-price-fraction">37</span>
+            </span>
+        "#;
+
+        assert_eq!(parse_price_from(html), Some(52.37));
+    }
+
+    #[test]
+    fn returns_none_when_no_price() {
+        assert_eq!(parse_price_from(r#"<div>no price</div>"#), None);
+    }
+}
+```
+
+## Async Tests with Mocking
+
+```rust
+use wiremock::{Mock, MockServer, ResponseTemplate};
+
+#[tokio::test]
+async fn test_scraper() {
+    let test_data = include_str!("_data/amazon.txt");
+    let mock_server = MockServer::start().await;
+    let base_url = mock_server.uri().parse().unwrap();
+    let client = ScraperClient::new().unwrap();
+
+    Mock::given(wiremock::matchers::method("GET"))
+        .and(wiremock::matchers::path("/dp/B08N5WRWZL"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(test_data))
+        .mount(&mock_server)
+        .await;
+
+    let url = ProductUrl::from_str("https://www.amazon.com/dp/B08N5WRWZL")
+        .unwrap()
+        .with_base_url(base_url)
+        .unwrap();
+
+    let scraper = AmazonScraper::new(&client);
+    let product = scraper.scrape(url).await.unwrap();
+
+    assert_eq!(product.title, "Expected Title");
+    assert_eq!(product.price, Some(305.99));
+}
+```
+
+## Best Practices
+
+- **Use `rstest`** for parametrized tests with `#[case]`
+- **Use `pretty_assertions`** for better error messages
+- **Use `expect()` freely**: `expect()` can be used freely in tests and test support code for clearer error messages
+- **Group tests** by functionality (basic, edge cases, invalid)
+- **Create helpers** to reduce duplication
+- **Use `include_str!()`** for large fixtures
+- **Test error cases** explicitly
+- **Keep tests focused** on one behavior

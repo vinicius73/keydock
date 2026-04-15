@@ -27,7 +27,10 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
 
     Router::new()
         .route("/health", get(health::health_check))
-        .route("/openapi.json", get(|| async { JsonOpenApi(ApiDoc::openapi()) }))
+        .route(
+            "/openapi.json",
+            get(|| async { JsonOpenApi(ApiDoc::openapi()) }),
+        )
         .route(
             "/metrics",
             get(move || {
@@ -37,9 +40,7 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
                     (
                         [(
                             axum::http::header::CONTENT_TYPE,
-                            HeaderValue::from_static(
-                                "text/plain; version=0.0.4; charset=utf-8",
-                            ),
+                            HeaderValue::from_static("text/plain; version=0.0.4; charset=utf-8"),
                         )],
                         metrics_data,
                     )
