@@ -3,6 +3,7 @@
 //! Domain types and invariants for Keydock.
 
 pub mod bucket;
+pub mod counter;
 pub mod error;
 pub mod key;
 pub mod permission;
@@ -13,6 +14,7 @@ pub mod txn;
 pub mod value;
 
 pub use bucket::BucketId;
+pub use counter::{CounterOp, CounterValue};
 pub use error::DomainError;
 pub use key::Key;
 pub use permission::Permission;
