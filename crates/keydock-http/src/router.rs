@@ -1,6 +1,6 @@
 use axum::{
     Router,
-    http::{HeaderValue, Method, StatusCode, header},
+    http::{HeaderValue, Method, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -10,6 +10,7 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::instrument;
 use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
 
 use crate::error::not_implemented;
 use crate::openapi::ApiDoc;
@@ -38,11 +39,8 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health::health_check))
-        .route(
-            "/openapi.json",
-            get(|| async { JsonOpenApi(ApiDoc::openapi()) }),
-        )
         .route(
             "/metrics",
             get(move || {
@@ -80,26 +78,4 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)
-}
-
-/// JSON OpenAPI document as Axum response.
-struct JsonOpenApi(utoipa::openapi::OpenApi);
-
-impl IntoResponse for JsonOpenApi {
-    fn into_response(self) -> Response {
-        match serde_json::to_string(&self.0) {
-            Ok(s) => (
-                [(
-                    header::CONTENT_TYPE,
-                    HeaderValue::from_static("application/json"),
-                )],
-                s,
-            )
-                .into_response(),
-            Err(e) => {
-                tracing::error!(error = %e, "failed to serialize OpenAPI document");
-                StatusCode::INTERNAL_SERVER_ERROR.into_response()
-            }
-        }
-    }
 }
