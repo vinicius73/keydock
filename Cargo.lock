@@ -1336,6 +1336,7 @@ dependencies = [
  "keydock-state",
  "keydock-support",
  "keydock-usecase",
+ "metrics",
  "metrics-exporter-prometheus",
  "percent-encoding",
  "pretty_assertions",

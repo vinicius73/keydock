@@ -12,7 +12,10 @@ use tracing::instrument;
 use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
+use axum::middleware;
+
 use crate::error::not_implemented;
+use crate::middleware::metrics;
 use crate::openapi::ApiDoc;
 use crate::routes::{buckets, health, keys, tokens, txn};
 
@@ -77,6 +80,7 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
                 .patch(buckets::update_policy)
                 .delete(buckets::delete_bucket),
         )
+        .layer(middleware::from_fn(metrics::track_http_metrics))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
         .with_state(state)

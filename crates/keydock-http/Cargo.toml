@@ -13,6 +13,7 @@ keydock-domain = { workspace = true }
 keydock-state = { workspace = true }
 keydock-support = { workspace = true }
 keydock-usecase = { workspace = true }
+metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 percent-encoding = { workspace = true }
 secrecy = { workspace = true }
