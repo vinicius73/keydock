@@ -3,17 +3,21 @@
 use std::path::Path;
 use std::sync::Arc;
 
+#[cfg(unix)]
+use tokio::signal::unix::{SignalKind, signal};
+
 use anyhow::Context;
-use keydock_config::{CliError, Command, Config, ServeArgs, ValidatedHttpConfig};
+use metrics_exporter_prometheus::PrometheusBuilder;
+use tokio::net::TcpListener;
+use tracing_subscriber::EnvFilter;
+
+use keydock_config::{CliError, Command, Config, ServeArgs};
 use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
 use keydock_http::build_router;
 use keydock_state::AppState;
 use keydock_support::clock::SystemClock;
 use keydock_usecase::ports::{BucketRepository, KeyRepository};
-use metrics_exporter_prometheus::PrometheusBuilder;
-use tokio::net::TcpListener;
-use tracing_subscriber::EnvFilter;
 
 fn main() -> anyhow::Result<()> {
     let command = match keydock_config::parse() {
@@ -54,22 +58,16 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.paths.data_dir)
         .with_context(|| format!("create data directory {}", config.paths.data_dir.display()))?;
 
-    let store =
-        Arc::new(FjallStore::open(&config.paths.data_dir).map_err(|e| anyhow::anyhow!("{e}"))?);
+    let store = Arc::new(
+        FjallStore::open(&config.paths.data_dir)
+            .with_context(|| format!("open store at {}", config.paths.data_dir.display()))?,
+    );
     let buckets: Arc<dyn BucketRepository> = store.clone();
     let keys: Arc<dyn KeyRepository> = store.clone();
     let clock: Arc<dyn keydock_support::Clock> = Arc::new(SystemClock);
 
-    let http = ValidatedHttpConfig::from_config(&config);
     let root_key = Arc::new(SigningKey::new(Box::new(config.root_key.expose_bytes())));
-    let state = AppState::new(
-        http,
-        env!("CARGO_PKG_VERSION"),
-        clock,
-        buckets,
-        keys,
-        root_key,
-    );
+    let state = AppState::new(env!("CARGO_PKG_VERSION"), clock, buckets, keys, root_key);
 
     let router = build_router(state, prometheus);
 
@@ -108,29 +106,32 @@ fn init_tracing(json: bool) -> anyhow::Result<()> {
     } else {
         tracing_subscriber::fmt().with_env_filter(filter).try_init()
     };
-    result.map_err(|e| anyhow::anyhow!("{e}"))
+    result.map_err(|e| anyhow::anyhow!("init tracing subscriber: {e}"))
 }
 
 /// For `--config` default when none is passed: optional `keydock.toml` in cwd.
 #[allow(dead_code)]
 fn default_config_path() -> impl AsRef<Path> {
-    std::path::Path::new("keydock.toml")
+    Path::new("keydock.toml")
 }
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("install CTRL+C handler");
+        if let Err(e) = tokio::signal::ctrl_c().await {
+            tracing::error!(error = %e, "failed to listen for CTRL+C");
+        }
     };
 
     #[cfg(unix)]
     let terminate = async {
-        use tokio::signal::unix::{SignalKind, signal};
-        signal(SignalKind::terminate())
-            .expect("install signal handler")
-            .recv()
-            .await;
+        match signal(SignalKind::terminate()) {
+            Ok(mut stream) => {
+                stream.recv().await;
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "failed to listen for SIGTERM");
+            }
+        }
     };
 
     #[cfg(not(unix))]

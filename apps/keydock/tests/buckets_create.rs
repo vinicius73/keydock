@@ -2,17 +2,19 @@
 
 mod common;
 
-use common::buckets::{CreateBucketForm, create_bucket};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
 use serde_json::Value;
+use uuid::Uuid;
+
+use common::buckets::{CreateBucketForm, create_bucket};
 
 #[rstest]
 #[case("owner@example.com")]
 #[case("other@example.net")]
 #[tokio::test]
 async fn create_public_bucket(#[case] email: &str) {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -27,12 +29,12 @@ async fn create_public_bucket(#[case] email: &str) {
     .await;
 
     assert!(!bid.is_empty());
-    assert!(uuid::Uuid::parse_str(&bid).is_ok());
+    assert!(Uuid::parse_str(&bid).is_ok());
 }
 
 #[tokio::test]
 async fn create_restricted_bucket() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {

@@ -1143,6 +1143,7 @@ dependencies = [
  "serde",
  "thiserror",
  "toml",
+ "tracing",
  "uuid",
 ]
 
@@ -1211,10 +1212,10 @@ name = "keydock-state"
 version = "0.1.0-alpha"
 dependencies = [
  "axum",
- "keydock-config",
  "keydock-domain",
  "keydock-support",
  "keydock-usecase",
+ "tracing",
 ]
 
 [[package]]
@@ -1231,9 +1232,7 @@ dependencies = [
 name = "keydock-testkit"
 version = "0.1.0-alpha"
 dependencies = [
- "axum",
  "axum-test",
- "keydock-config",
  "keydock-domain",
  "keydock-fjall",
  "keydock-http",
@@ -1242,7 +1241,8 @@ dependencies = [
  "keydock-usecase",
  "metrics-exporter-prometheus",
  "tempfile",
- "tokio",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1262,6 +1262,7 @@ dependencies = [
  "subtle",
  "thiserror",
  "time",
+ "tracing",
 ]
 
 [[package]]

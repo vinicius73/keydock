@@ -3,6 +3,7 @@
 use keydock_domain::{BucketPolicy, Permission, SigningKey};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use tracing::instrument;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredPermission {
@@ -74,12 +75,14 @@ impl From<StoredBucketPolicy> for BucketPolicy {
 }
 
 /// Encode policy to JSON bytes for storage.
-pub fn encode_policy(policy: &BucketPolicy) -> Result<Vec<u8>, serde_json::Error> {
+#[instrument(skip_all, name = "codec::encode_policy")]
+pub fn encode_policy(policy: &BucketPolicy) -> Result<Vec<u8>, CodecError> {
     let stored = StoredBucketPolicy::from(policy);
-    serde_json::to_vec(&stored)
+    Ok(serde_json::to_vec(&stored)?)
 }
 
 /// Decode policy from stored JSON bytes.
+#[instrument(skip_all, name = "codec::decode_policy")]
 pub fn decode_policy(bytes: &[u8]) -> Result<BucketPolicy, CodecError> {
     let stored: StoredBucketPolicy = serde_json::from_slice(bytes)?;
     Ok(BucketPolicy::from(stored))

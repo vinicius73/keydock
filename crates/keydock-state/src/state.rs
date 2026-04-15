@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::FromRef;
-use keydock_config::ValidatedHttpConfig;
+
 use keydock_domain::SigningKey;
 use keydock_support::Clock;
 use keydock_usecase::ports::{BucketRepository, KeyRepository};
@@ -9,18 +9,17 @@ use keydock_usecase::ports::{BucketRepository, KeyRepository};
 /// Axum-facing aggregate state (handlers stay thin; business rules live in use cases).
 #[derive(Clone)]
 pub struct AppState {
-    pub http: ValidatedHttpConfig,
-    pub version: &'static str,
-    pub clock: Arc<dyn Clock>,
-    pub buckets: Arc<dyn BucketRepository>,
-    pub keys: Arc<dyn KeyRepository>,
+    version: &'static str,
+    clock: Arc<dyn Clock>,
+    buckets: Arc<dyn BucketRepository>,
+    keys: Arc<dyn KeyRepository>,
     /// Root key for HMAC hashing of API credentials (`secret_key` / `read_key` / `write_key`).
-    pub root_key: Arc<SigningKey>,
+    root_key: Arc<SigningKey>,
 }
 
 impl AppState {
+    #[tracing::instrument(skip_all, name = "AppState::new")]
     pub fn new(
-        http: ValidatedHttpConfig,
         version: &'static str,
         clock: Arc<dyn Clock>,
         buckets: Arc<dyn BucketRepository>,
@@ -28,13 +27,32 @@ impl AppState {
         root_key: Arc<SigningKey>,
     ) -> Self {
         Self {
-            http,
             version,
             clock,
             buckets,
             keys,
             root_key,
         }
+    }
+
+    pub fn version(&self) -> &'static str {
+        self.version
+    }
+
+    pub fn clock(&self) -> &Arc<dyn Clock> {
+        &self.clock
+    }
+
+    pub fn buckets(&self) -> &Arc<dyn BucketRepository> {
+        &self.buckets
+    }
+
+    pub fn keys(&self) -> &Arc<dyn KeyRepository> {
+        &self.keys
+    }
+
+    pub fn root_key(&self) -> &Arc<SigningKey> {
+        &self.root_key
     }
 }
 

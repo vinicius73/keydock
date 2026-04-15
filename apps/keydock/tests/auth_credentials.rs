@@ -4,13 +4,14 @@ mod common;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
-use common::buckets::{CreateBucketForm, create_bucket};
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 
+use common::buckets::{CreateBucketForm, create_bucket};
+
 #[tokio::test]
 async fn bearer_secret_key_grants_admin() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -35,7 +36,7 @@ async fn bearer_secret_key_grants_admin() {
 
 #[tokio::test]
 async fn bearer_write_key_grants_write() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -66,7 +67,7 @@ async fn bearer_write_key_grants_write() {
 
 #[tokio::test]
 async fn bearer_read_key_grants_read() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -94,7 +95,7 @@ async fn bearer_read_key_grants_read() {
 
 #[tokio::test]
 async fn query_param_access_token_works() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -114,7 +115,7 @@ async fn query_param_access_token_works() {
 
 #[tokio::test]
 async fn query_param_key_works() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -134,7 +135,7 @@ async fn query_param_key_works() {
 
 #[tokio::test]
 async fn basic_auth_works() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -158,7 +159,7 @@ async fn basic_auth_works() {
 
 #[tokio::test]
 async fn wrong_credential_returns_401() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -183,7 +184,7 @@ async fn wrong_credential_returns_401() {
 
 #[tokio::test]
 async fn missing_bucket_returns_404() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let response = server.get("/no-such-bucket/k").await;
     response.assert_status_not_found();
     let body: Value = response.json();
@@ -192,7 +193,7 @@ async fn missing_bucket_returns_404() {
 
 #[tokio::test]
 async fn anonymous_public_bucket_read() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -212,7 +213,7 @@ async fn anonymous_public_bucket_read() {
 
 #[tokio::test]
 async fn anonymous_restricted_bucket_read() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {

@@ -12,6 +12,7 @@ pub struct RequestContext {
 }
 
 impl RequestContext {
+    #[tracing::instrument(skip_all, name = "RequestContext::new")]
     pub fn new(clock: Arc<dyn Clock>) -> Self {
         Self {
             clock,
@@ -19,6 +20,7 @@ impl RequestContext {
         }
     }
 
+    #[tracing::instrument(skip_all, name = "RequestContext::with_identity")]
     pub fn with_identity(clock: Arc<dyn Clock>, identity: ResolvedIdentity) -> Self {
         Self { clock, identity }
     }

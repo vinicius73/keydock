@@ -2,14 +2,22 @@
 
 mod common;
 
-use common::buckets::{CreateBucketForm, create_bucket};
-use common::tokens::{CreateTokenForm, UpdatePolicyForm, create_token, patch_policy};
 use pretty_assertions::assert_eq;
 use serde_json::Value;
 
+use common::buckets::{CreateBucketForm, create_bucket};
+use common::tokens::{CreateTokenForm, UpdatePolicyForm, create_token, patch_policy};
+
+#[track_caller]
+fn access_token_str(body: &Value) -> &str {
+    body.get("access_token")
+        .and_then(|v| v.as_str())
+        .unwrap_or_else(|| panic!("expected string access_token in {body:?}"))
+}
+
 #[tokio::test]
 async fn create_token_requires_admin() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -36,12 +44,12 @@ async fn create_token_requires_admin() {
     let ok = create_token(&server, &bid, "sec", &form).await;
     ok.assert_status_ok();
     let body: Value = ok.json();
-    assert!(body["access_token"].as_str().unwrap().contains('.'));
+    assert!(access_token_str(&body).contains('.'));
 }
 
 #[tokio::test]
 async fn token_read_within_prefix() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -63,7 +71,7 @@ async fn token_read_within_prefix() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = token["access_token"].as_str().expect("access_token");
+    let access = access_token_str(&token);
 
     let ok = server
         .get(&format!("/{bid}/user:42:name"))
@@ -74,7 +82,7 @@ async fn token_read_within_prefix() {
 
 #[tokio::test]
 async fn token_read_outside_prefix() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -96,7 +104,7 @@ async fn token_read_outside_prefix() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = token["access_token"].as_str().expect("access_token");
+    let access = access_token_str(&token);
 
     let response = server
         .get(&format!("/{bid}/admin:config"))
@@ -109,7 +117,7 @@ async fn token_read_outside_prefix() {
 
 #[tokio::test]
 async fn token_expired() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -131,7 +139,7 @@ async fn token_expired() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = token["access_token"].as_str().expect("access_token");
+    let access = access_token_str(&token);
 
     let response = server
         .get(&format!("/{bid}/k1"))
@@ -144,7 +152,7 @@ async fn token_expired() {
 
 #[tokio::test]
 async fn token_wrong_bucket() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let a = create_bucket(
         &server,
         &CreateBucketForm {
@@ -178,7 +186,7 @@ async fn token_wrong_bucket() {
     let tok = create_token(&server, &a, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = token["access_token"].as_str().expect("access_token");
+    let access = access_token_str(&token);
 
     let response = server
         .get(&format!("/{b}/k1"))
@@ -191,7 +199,7 @@ async fn token_wrong_bucket() {
 
 #[tokio::test]
 async fn token_invalidated_after_signing_key_rotation() {
-    let (_dir, server) = keydock_testkit::test_app();
+    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
     let bid = create_bucket(
         &server,
         &CreateBucketForm {
@@ -213,7 +221,7 @@ async fn token_invalidated_after_signing_key_rotation() {
     let tok = create_token(&server, &bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
-    let access = token["access_token"].as_str().expect("access_token");
+    let access = access_token_str(&token);
 
     let ok_before = server
         .get(&format!("/{bid}/k1"))
@@ -241,7 +249,7 @@ async fn token_invalidated_after_signing_key_rotation() {
     let tok2 = create_token(&server, &bid, "sec", &form).await;
     tok2.assert_status_ok();
     let token2: Value = tok2.json();
-    let access2 = token2["access_token"].as_str().expect("access_token");
+    let access2 = access_token_str(&token2);
 
     let ok_after = server
         .get(&format!("/{bid}/k1"))

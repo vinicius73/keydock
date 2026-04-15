@@ -21,6 +21,6 @@ pub struct HealthResponse {
 pub async fn health_check(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
-        version: state.version,
+        version: state.version(),
     })
 }
