@@ -3,14 +3,18 @@ use std::sync::Arc;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
 use keydock_domain::{BucketId, BucketPolicy, Key, StoredValue};
-use keydock_usecase::{BucketRepository, KeyRepository, StoredEntry, UseCaseError};
+use keydock_usecase::{
+    BucketRepository, KeyRepository, ListEntry, ListOpts, StoredEntry, UseCaseError,
+};
 use time::OffsetDateTime;
 use tracing::instrument;
 
 use crate::FjallError;
 use crate::codec::{decode_policy, encode_policy};
 use crate::layout::{DATA_KEYSPACE, META_KEYSPACE};
-use crate::repos::{data_storage_key, decode_entry, encode_entry};
+use crate::repos::{
+    data_key_prefix, data_storage_key, decode_entry, encode_entry, user_key_from_storage_key,
+};
 
 /// Owns the Fjall [`Database`] handle and keyspaces used by the product.
 #[derive(Clone)]
@@ -125,5 +129,53 @@ impl KeyRepository for FjallStore {
             self.data.remove(&k).map_err(FjallError::from)?;
         }
         Ok(existed)
+    }
+
+    #[instrument(
+        skip_all,
+        name = "FjallStore::list",
+        fields(bucket = %bucket.as_str())
+    )]
+    fn list(&self, bucket: &BucketId, opts: &ListOpts<'_>) -> Result<Vec<ListEntry>, UseCaseError> {
+        let scan_prefix = data_key_prefix(bucket, opts.prefix);
+        let mut collected: Vec<ListEntry> = Vec::new();
+
+        for guard in self.data.prefix(scan_prefix) {
+            let (uk, uv) = guard.into_inner().map_err(FjallError::from)?;
+            let storage_key = uk.as_ref();
+            let Some(user_key) = user_key_from_storage_key(storage_key, bucket) else {
+                tracing::debug!("skipped malformed data key in list scan");
+                continue;
+            };
+
+            let entry = decode_entry(uv.as_ref())?;
+
+            if let (Some(cutoff), Some(exp)) = (opts.expires_before, entry.expires_at)
+                && exp <= cutoff
+            {
+                continue;
+            }
+
+            let value = if opts.include_values {
+                Some(entry.value)
+            } else {
+                None
+            };
+            collected.push(ListEntry {
+                key: user_key,
+                value,
+            });
+        }
+
+        if opts.reverse {
+            collected.reverse();
+        }
+
+        let out: Vec<ListEntry> = collected
+            .into_iter()
+            .skip(opts.skip)
+            .take(opts.limit)
+            .collect();
+        Ok(out)
     }
 }

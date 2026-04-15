@@ -8,13 +8,23 @@ use time::{Duration, OffsetDateTime};
 use tracing::instrument;
 
 use crate::UseCaseError;
-use crate::ports::KeyRepository;
+use crate::ports::{KeyRepository, ListEntry, ListOpts};
 
 /// Stored key payload plus optional expiry metadata (`KeyService::get` treats expired entries as missing).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredEntry {
     pub value: StoredValue,
     pub expires_at: Option<OffsetDateTime>,
+}
+
+/// Raw listing inputs before defaults (HTTP layer builds this from query params).
+#[derive(Debug, Clone, Default)]
+pub struct ListOptsInput {
+    pub prefix: Option<Vec<u8>>,
+    pub limit: Option<usize>,
+    pub skip: Option<usize>,
+    pub reverse: Option<bool>,
+    pub include_values: Option<bool>,
 }
 
 /// Stateless orchestrator for key operations (handlers inject `KeyRepository` + `Clock`).
@@ -39,6 +49,29 @@ impl KeyService {
             return Err(UseCaseError::NotFound);
         }
         Ok(entry)
+    }
+
+    #[instrument(
+        skip_all,
+        name = "KeyService::list",
+        fields(bucket = %bucket.as_str())
+    )]
+    pub fn list(
+        repo: &dyn KeyRepository,
+        clock: &dyn Clock,
+        bucket: &BucketId,
+        input: ListOptsInput,
+    ) -> Result<Vec<ListEntry>, UseCaseError> {
+        const DEFAULT_LIMIT: usize = 10_000;
+        let opts = ListOpts {
+            prefix: input.prefix.as_deref(),
+            limit: input.limit.unwrap_or(DEFAULT_LIMIT),
+            skip: input.skip.unwrap_or(0),
+            reverse: input.reverse.unwrap_or(false),
+            include_values: input.include_values.unwrap_or(false),
+            expires_before: Some(clock.now_utc()),
+        };
+        repo.list(bucket, &opts)
     }
 
     /// Maps HTTP write inputs (body, `Content-Type`, TTL) to storage; kept explicit for reviewability.
@@ -111,6 +144,8 @@ mod tests {
     use pretty_assertions::assert_eq;
     use rstest::rstest;
 
+    use crate::ports::{ListEntry, ListOpts};
+
     use super::*;
 
     /// Fixed instant for deterministic TTL tests.
@@ -145,6 +180,14 @@ mod tests {
 
         fn delete(&self, _bucket: &BucketId, _key: &Key) -> Result<bool, UseCaseError> {
             Ok(false)
+        }
+
+        fn list(
+            &self,
+            _bucket: &BucketId,
+            _opts: &ListOpts<'_>,
+        ) -> Result<Vec<ListEntry>, UseCaseError> {
+            Ok(vec![])
         }
     }
 
@@ -239,6 +282,14 @@ mod tests {
 
         fn delete(&self, _bucket: &BucketId, _key: &Key) -> Result<bool, UseCaseError> {
             Ok(false)
+        }
+
+        fn list(
+            &self,
+            _bucket: &BucketId,
+            _opts: &ListOpts<'_>,
+        ) -> Result<Vec<ListEntry>, UseCaseError> {
+            Ok(vec![])
         }
     }
 

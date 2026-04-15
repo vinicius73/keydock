@@ -15,6 +15,6 @@ pub mod txn;
 pub use auth::{ResolvedIdentity, hash_credential, resolve, verify_credential};
 pub use context::RequestContext;
 pub use error::{AuthError, TokenError, UseCaseError};
-pub use keys::{KeyService, StoredEntry};
-pub use ports::{BucketRepository, KeyRepository};
+pub use keys::{KeyService, ListOptsInput, StoredEntry};
+pub use ports::{BucketRepository, KeyRepository, ListEntry, ListOpts};
 pub use tokens::mint;
