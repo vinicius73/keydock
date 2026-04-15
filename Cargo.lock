@@ -1088,6 +1088,7 @@ dependencies = [
  "axum",
  "axum-test",
  "keydock-config",
+ "keydock-domain",
  "keydock-fjall",
  "keydock-http",
  "keydock-state",
@@ -1111,6 +1112,7 @@ dependencies = [
  "serde",
  "thiserror",
  "toml",
+ "uuid",
 ]
 
 [[package]]
@@ -1136,6 +1138,11 @@ dependencies = [
  "fjall",
  "keydock-domain",
  "keydock-usecase",
+ "pretty_assertions",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "tempfile",
  "thiserror",
  "tracing",
 ]
@@ -1167,6 +1174,7 @@ version = "0.1.0-alpha"
 dependencies = [
  "axum",
  "keydock-config",
+ "keydock-domain",
  "keydock-support",
  "keydock-usecase",
 ]
@@ -1188,6 +1196,7 @@ dependencies = [
  "axum",
  "axum-test",
  "keydock-config",
+ "keydock-domain",
  "keydock-fjall",
  "keydock-http",
  "keydock-state",

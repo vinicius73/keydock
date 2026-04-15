@@ -8,5 +8,6 @@ rust-version.workspace = true
 [dependencies]
 axum = { workspace = true }
 keydock-config = { workspace = true }
+keydock-domain = { workspace = true }
 keydock-usecase = { workspace = true }
 keydock-support = { workspace = true }
