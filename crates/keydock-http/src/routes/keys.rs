@@ -9,7 +9,7 @@ use keydock_state::AppState;
 use keydock_usecase::KeyService;
 use percent_encoding::percent_decode_str;
 use serde::Deserialize;
-use tracing::instrument;
+use tracing::{debug, instrument};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::{bad_request, map_use_case_repo_err, not_implemented};
@@ -83,6 +83,12 @@ pub async fn get_key(
         &key_dom,
     )
     .map_err(map_use_case_repo_err)?;
+    debug!(
+        bucket = %auth.bucket_id.as_str(),
+        key_len = key_dom.as_bytes().len(),
+        value_kind = ?entry.value.kind,
+        "key read"
+    );
     stored_value_response(&entry.value)
 }
 
@@ -147,6 +153,14 @@ pub async fn put_key(
         auth.default_ttl_secs,
     )
     .map_err(map_use_case_repo_err)?;
+    debug!(
+        bucket = %auth.bucket_id.as_str(),
+        key_len = key_dom.as_bytes().len(),
+        value_kind = ?value.kind,
+        value_bytes = value.payload.len(),
+        ttl_query = ?params.ttl,
+        "key stored"
+    );
     stored_value_response(&value)
 }
 
@@ -177,6 +191,11 @@ pub async fn delete_key(
     auth.require_delete_on(&key_dom)?;
     KeyService::delete(state.keys().as_ref(), &auth.bucket_id, &key_dom)
         .map_err(map_use_case_repo_err)?;
+    debug!(
+        bucket = %auth.bucket_id.as_str(),
+        key_len = key_dom.as_bytes().len(),
+        "key deleted"
+    );
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -184,7 +203,7 @@ pub async fn delete_key(
 pub async fn patch_key(
     State(_state): State<AppState>,
     _auth: BucketAuth,
-    Path((bucket, key)): Path<(String, String)>,
+    Path((_bucket, _key)): Path<(String, String)>,
 ) -> Response {
-    not_implemented(format!("PATCH /{bucket}/{key}"))
+    not_implemented("not_implemented")
 }

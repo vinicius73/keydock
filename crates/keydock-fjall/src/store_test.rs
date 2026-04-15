@@ -6,7 +6,9 @@ use keydock_domain::{BucketId, BucketPolicy, Key, Permission, SigningKey, Stored
 use keydock_usecase::{BucketRepository, KeyRepository, ListEntry, ListOpts, hash_credential};
 use pretty_assertions::assert_eq;
 use secrecy::ExposeSecret;
+use std::time::Duration as SweepInterval;
 use tempfile::tempdir;
+
 use time::{Duration, OffsetDateTime};
 
 use crate::FjallStore;
@@ -249,4 +251,46 @@ fn list_excludes_expired_entries_when_expires_before_set() {
         .expect("get")
         .expect("dead key still in storage");
     assert_eq!(dead_stored.expires_at, Some(now - Duration::seconds(1)));
+}
+
+#[test]
+fn gc_sweep_removes_expired_keys_from_storage() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let now = OffsetDateTime::now_utc();
+    let v = StoredValue::new(Bytes::from_static(b"v"), ValueKind::Utf8).expect("value");
+
+    let k_expired = Key::from_bytes(Bytes::from_static(b"gone")).expect("key");
+    let k_ok = Key::from_bytes(Bytes::from_static(b"stay")).expect("key");
+    KeyRepository::set(
+        &store,
+        &bucket,
+        &k_expired,
+        v.clone(),
+        Some(now - Duration::seconds(60)),
+    )
+    .expect("set expired");
+    KeyRepository::set(&store, &bucket, &k_ok, v, Some(now + Duration::hours(1))).expect("set ok");
+
+    assert_eq!(
+        KeyRepository::get(&store, &bucket, &k_expired)
+            .expect("get")
+            .is_some(),
+        true
+    );
+
+    let sweeper = store.build_gc_sweeper(SweepInterval::from_secs(3600));
+    sweeper.sweep_once();
+
+    assert_eq!(
+        KeyRepository::get(&store, &bucket, &k_expired).expect("get"),
+        None
+    );
+    assert_eq!(
+        KeyRepository::get(&store, &bucket, &k_ok)
+            .expect("get")
+            .is_some(),
+        true
+    );
 }

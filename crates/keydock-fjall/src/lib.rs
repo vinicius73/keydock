@@ -13,4 +13,5 @@ pub mod store;
 mod store_test;
 
 pub use error::FjallError;
+pub use gc::GcSweeper;
 pub use store::FjallStore;

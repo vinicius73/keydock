@@ -1,5 +1,6 @@
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
 use keydock_domain::{BucketId, BucketPolicy, Key, StoredValue};
@@ -11,10 +12,14 @@ use tracing::instrument;
 
 use crate::FjallError;
 use crate::codec::{decode_policy, encode_policy};
+use crate::gc::GcSweeper;
 use crate::layout::{DATA_KEYSPACE, META_KEYSPACE};
 use crate::repos::{
     data_key_prefix, data_storage_key, decode_entry, encode_entry, user_key_from_storage_key,
 };
+
+/// Above this many keys after the expiry filter, reverse listing logs a memory warning (full prefix is materialized).
+const REVERSE_LIST_WARN_ENTRY_COUNT: usize = 50_000;
 
 /// Owns the Fjall [`Database`] handle and keyspaces used by the product.
 #[derive(Clone)]
@@ -32,6 +37,11 @@ impl FjallStore {
         let meta = Arc::new(db.keyspace(META_KEYSPACE, KeyspaceCreateOptions::default)?);
         let data = Arc::new(db.keyspace(DATA_KEYSPACE, KeyspaceCreateOptions::default)?);
         Ok(Self { db, meta, data })
+    }
+
+    #[instrument(skip_all, name = "FjallStore::build_gc_sweeper")]
+    pub fn build_gc_sweeper(&self, interval: Duration) -> GcSweeper {
+        GcSweeper::new(Arc::clone(&self.data), interval)
     }
 }
 
@@ -137,10 +147,66 @@ impl KeyRepository for FjallStore {
         fields(bucket = %bucket.as_str())
     )]
     fn list(&self, bucket: &BucketId, opts: &ListOpts<'_>) -> Result<Vec<ListEntry>, UseCaseError> {
+        if opts.limit == 0 {
+            return Ok(vec![]);
+        }
+
         let scan_prefix = data_key_prefix(bucket, opts.prefix);
-        let mut collected: Vec<ListEntry> = Vec::new();
+
+        if opts.reverse {
+            // Reverse order requires every matching entry before skip/limit (fjall prefix scan is forward-only).
+            let mut collected: Vec<ListEntry> = Vec::new();
+            for guard in self.data.prefix(scan_prefix) {
+                let (uk, uv) = guard.into_inner().map_err(FjallError::from)?;
+                let storage_key = uk.as_ref();
+                let Some(user_key) = user_key_from_storage_key(storage_key, bucket) else {
+                    tracing::debug!("skipped malformed data key in list scan");
+                    continue;
+                };
+
+                let entry = decode_entry(uv.as_ref())?;
+
+                if let (Some(cutoff), Some(exp)) = (opts.expires_before, entry.expires_at)
+                    && exp <= cutoff
+                {
+                    continue;
+                }
+
+                let value = if opts.include_values {
+                    Some(entry.value)
+                } else {
+                    None
+                };
+                collected.push(ListEntry {
+                    key: user_key,
+                    value,
+                });
+            }
+            if collected.len() >= REVERSE_LIST_WARN_ENTRY_COUNT {
+                tracing::warn!(
+                    bucket = %bucket.as_str(),
+                    matched = collected.len(),
+                    "reverse listing materialized a large key set; memory scales with prefix match count"
+                );
+            }
+            collected.reverse();
+            let out: Vec<ListEntry> = collected
+                .into_iter()
+                .skip(opts.skip)
+                .take(opts.limit)
+                .collect();
+            return Ok(out);
+        }
+
+        let mut skip_remaining = opts.skip;
+        let mut taken = 0usize;
+        let limit = opts.limit;
+        let mut out: Vec<ListEntry> = Vec::new();
 
         for guard in self.data.prefix(scan_prefix) {
+            if taken >= limit {
+                break;
+            }
             let (uk, uv) = guard.into_inner().map_err(FjallError::from)?;
             let storage_key = uk.as_ref();
             let Some(user_key) = user_key_from_storage_key(storage_key, bucket) else {
@@ -156,26 +222,23 @@ impl KeyRepository for FjallStore {
                 continue;
             }
 
+            if skip_remaining > 0 {
+                skip_remaining -= 1;
+                continue;
+            }
+
             let value = if opts.include_values {
                 Some(entry.value)
             } else {
                 None
             };
-            collected.push(ListEntry {
+            out.push(ListEntry {
                 key: user_key,
                 value,
             });
+            taken += 1;
         }
 
-        if opts.reverse {
-            collected.reverse();
-        }
-
-        let out: Vec<ListEntry> = collected
-            .into_iter()
-            .skip(opts.skip)
-            .take(opts.limit)
-            .collect();
         Ok(out)
     }
 }

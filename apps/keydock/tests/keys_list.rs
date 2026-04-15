@@ -3,6 +3,7 @@
 use axum::http::StatusCode;
 use axum::http::header;
 use keydock_testkit::{BucketSetup, TestContext};
+use pretty_assertions::assert_eq;
 use serde_json::json;
 
 fn err_json(code: u16, msg: &str) -> serde_json::Value {

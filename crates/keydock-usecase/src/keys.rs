@@ -2,7 +2,7 @@
 
 use bytes::Bytes;
 use keydock_domain::value::ValueKind;
-use keydock_domain::{BucketId, Key, StoredValue};
+use keydock_domain::{BucketId, DomainError, Key, StoredValue};
 use keydock_support::Clock;
 use time::{Duration, OffsetDateTime};
 use tracing::instrument;
@@ -46,6 +46,11 @@ impl KeyService {
         if let Some(exp) = entry.expires_at
             && exp <= clock.now_utc()
         {
+            tracing::debug!(
+                bucket = %bucket.as_str(),
+                key_len = key.as_bytes().len(),
+                "key read skipped (expired ttl)"
+            );
             return Err(UseCaseError::NotFound);
         }
         Ok(entry)
@@ -76,6 +81,16 @@ impl KeyService {
 
     /// Maps HTTP write inputs (body, `Content-Type`, TTL) to storage; kept explicit for reviewability.
     #[allow(clippy::too_many_arguments)]
+    #[instrument(
+        skip_all,
+        name = "KeyService::set",
+        fields(
+            bucket = %bucket.as_str(),
+            key_len = key.as_bytes().len(),
+            has_ttl_override = ttl_override.is_some(),
+            has_default_ttl = default_ttl.is_some(),
+        )
+    )]
     pub fn set(
         repo: &dyn KeyRepository,
         clock: &dyn Clock,
@@ -91,12 +106,24 @@ impl KeyService {
         let effective = ttl_override.or(default_ttl);
         let expires_at = match effective {
             None | Some(0) => None,
-            Some(secs) => Some(clock.now_utc() + Duration::seconds(secs as i64)),
+            Some(secs) => {
+                let secs_i64 = i64::try_from(secs).map_err(|_| {
+                    UseCaseError::Domain(DomainError::InvalidTtl(
+                        "ttl seconds out of supported range".into(),
+                    ))
+                })?;
+                Some(clock.now_utc() + Duration::seconds(secs_i64))
+            }
         };
         repo.set(bucket, key, value.clone(), expires_at)?;
         Ok(value)
     }
 
+    #[instrument(
+        skip_all,
+        name = "KeyService::delete",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
     pub fn delete(
         repo: &dyn KeyRepository,
         bucket: &BucketId,
@@ -139,6 +166,7 @@ fn infer_value_kind(body: &[u8], content_type: Option<&str>) -> ValueKind {
 
 #[cfg(test)]
 mod tests {
+    use keydock_domain::DomainError;
     use keydock_domain::value::ValueKind;
     use keydock_support::clock::SystemClock;
     use pretty_assertions::assert_eq;
@@ -257,7 +285,32 @@ mod tests {
         .expect("set");
         assert_eq!(v.kind, ValueKind::Int64);
         let exp = (*repo.last_expires.lock().expect("lock")).expect("set called");
-        assert!(exp.is_some());
+        assert_eq!(exp.is_some(), true);
+    }
+
+    #[test]
+    fn set_rejects_ttl_seconds_out_of_i64_range() {
+        let repo = MockRepo {
+            last_expires: std::sync::Mutex::new(None),
+        };
+        let clock = SystemClock;
+        let bid = bucket();
+        let k = key();
+        let err = KeyService::set(
+            &repo,
+            &clock,
+            &bid,
+            &k,
+            Bytes::from_static(b"1"),
+            None,
+            Some(u64::MAX),
+            None,
+        )
+        .expect_err("ttl overflow");
+        assert_eq!(
+            matches!(err, UseCaseError::Domain(DomainError::InvalidTtl(_))),
+            true
+        );
     }
 
     /// Returns a fixed entry from `get` for TTL enforcement tests.

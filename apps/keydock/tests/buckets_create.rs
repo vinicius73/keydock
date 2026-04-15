@@ -1,6 +1,7 @@
 //! Bucket creation flows (HTTP integration).
 
 use keydock_testkit::{BucketSetup, TestContext};
+use pretty_assertions::assert_eq;
 use rstest::rstest;
 use serde_json::json;
 use uuid::Uuid;
@@ -18,8 +19,8 @@ async fn create_public_bucket(#[case] email: &str) {
         })
         .await;
 
-    assert!(!bid.is_empty());
-    assert!(Uuid::parse_str(&bid).is_ok());
+    assert_eq!(bid.is_empty(), false);
+    assert_eq!(Uuid::parse_str(&bid).is_ok(), true);
 }
 
 #[tokio::test]
