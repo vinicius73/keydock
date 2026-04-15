@@ -2,9 +2,8 @@
 
 mod common;
 
-use pretty_assertions::assert_eq;
 use rstest::rstest;
-use serde_json::Value;
+use serde_json::json;
 use uuid::Uuid;
 
 use common::buckets::{CreateBucketForm, create_bucket};
@@ -50,6 +49,7 @@ async fn create_restricted_bucket() {
 
     let response = server.get(&format!("/{bid}/k1")).await;
     response.assert_status_unauthorized();
-    let body: Value = response.json();
-    assert_eq!(body["error"], "unauthorized");
+    response.assert_json(&json!({
+        "error": "unauthorized"
+    }));
 }
