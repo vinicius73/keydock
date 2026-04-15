@@ -7,6 +7,10 @@ pub enum UseCaseError {
 
     #[error(transparent)]
     Domain(#[from] keydock_domain::DomainError),
+
+    /// Persistence or adapter failure (message is sanitized; no secrets).
+    #[error("storage error: {0}")]
+    Storage(String),
 }
 
 /// Authentication resolution failure (caller maps to HTTP 401).

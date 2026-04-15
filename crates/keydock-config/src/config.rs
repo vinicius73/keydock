@@ -1,8 +1,8 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
+use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -22,14 +22,36 @@ pub enum ConfigError {
     },
 }
 
+fn default_root_key() -> LoadedSecret {
+    LoadedSecret(SecretString::from(format!(
+        "{}-{}",
+        uuid::Uuid::new_v4(),
+        uuid::Uuid::new_v4()
+    )))
+}
+
 /// Full process configuration as loaded from file (before CLI merge).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Config {
     pub http: HttpConfig,
     pub paths: PathsConfig,
     /// Development-only toggle for JSON vs pretty logs (ADR: no env as primary; kept for ops convenience).
     #[serde(default)]
     pub log_json: bool,
+    /// Root key for hashing API credentials at rest (HMAC-SHA256). Override in production.
+    #[serde(default = "default_root_key")]
+    pub root_key: LoadedSecret,
+}
+
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("http", &self.http)
+            .field("paths", &self.paths)
+            .field("log_json", &self.log_json)
+            .field("root_key", &"[REDACTED]")
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +87,7 @@ impl Default for Config {
                 data_dir: PathBuf::from("./data"),
             },
             log_json: false,
+            root_key: default_root_key(),
         }
     }
 }
@@ -111,6 +134,38 @@ impl ValidatedHttpConfig {
     }
 }
 
-/// Placeholder for signing key loading (never log).
+/// Secret string from config (never log; use [`LoadedSecret::expose_bytes`] only at startup).
 #[derive(Clone)]
 pub struct LoadedSecret(pub SecretString);
+
+impl LoadedSecret {
+    /// Raw UTF-8 bytes of the configured secret (for deriving [`keydock_domain::SigningKey`]).
+    pub fn expose_bytes(&self) -> Vec<u8> {
+        self.0.expose_secret().as_bytes().to_vec()
+    }
+}
+
+impl Serialize for LoadedSecret {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.0.expose_secret())
+    }
+}
+
+impl<'de> Deserialize<'de> for LoadedSecret {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(LoadedSecret(SecretString::from(s)))
+    }
+}
+
+impl std::fmt::Debug for LoadedSecret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}

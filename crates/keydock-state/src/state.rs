@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use axum::extract::FromRef;
 use keydock_config::ValidatedHttpConfig;
+use keydock_domain::SigningKey;
 use keydock_support::Clock;
 use keydock_usecase::ports::{BucketRepository, KeyRepository};
 
@@ -13,6 +14,8 @@ pub struct AppState {
     pub clock: Arc<dyn Clock>,
     pub buckets: Arc<dyn BucketRepository>,
     pub keys: Arc<dyn KeyRepository>,
+    /// Root key for HMAC hashing of API credentials (`secret_key` / `read_key` / `write_key`).
+    pub root_key: Arc<SigningKey>,
 }
 
 impl AppState {
@@ -22,6 +25,7 @@ impl AppState {
         clock: Arc<dyn Clock>,
         buckets: Arc<dyn BucketRepository>,
         keys: Arc<dyn KeyRepository>,
+        root_key: Arc<SigningKey>,
     ) -> Self {
         Self {
             http,
@@ -29,6 +33,7 @@ impl AppState {
             clock,
             buckets,
             keys,
+            root_key,
         }
     }
 }
@@ -48,5 +53,11 @@ impl FromRef<AppState> for Arc<dyn BucketRepository> {
 impl FromRef<AppState> for Arc<dyn Clock> {
     fn from_ref(state: &AppState) -> Self {
         state.clock.clone()
+    }
+}
+
+impl FromRef<AppState> for Arc<SigningKey> {
+    fn from_ref(state: &AppState) -> Self {
+        state.root_key.clone()
     }
 }

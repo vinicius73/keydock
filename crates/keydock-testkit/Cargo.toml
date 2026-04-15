@@ -9,6 +9,7 @@ rust-version.workspace = true
 axum = { workspace = true }
 axum-test = { workspace = true }
 keydock-config = { workspace = true }
+keydock-domain = { workspace = true }
 keydock-fjall = { workspace = true }
 keydock-http = { workspace = true }
 keydock-state = { workspace = true }

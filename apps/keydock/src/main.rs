@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use keydock_config::{CliError, Command, Config, ServeArgs, ValidatedHttpConfig};
+use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
 use keydock_http::build_router;
 use keydock_state::AppState;
@@ -60,7 +61,15 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let clock: Arc<dyn keydock_support::Clock> = Arc::new(SystemClock);
 
     let http = ValidatedHttpConfig::from_config(&config);
-    let state = AppState::new(http, env!("CARGO_PKG_VERSION"), clock, buckets, keys);
+    let root_key = Arc::new(SigningKey::new(Box::new(config.root_key.expose_bytes())));
+    let state = AppState::new(
+        http,
+        env!("CARGO_PKG_VERSION"),
+        clock,
+        buckets,
+        keys,
+        root_key,
+    );
 
     let router = build_router(state, prometheus);
 
