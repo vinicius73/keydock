@@ -1,18 +1,8 @@
 //! Key CRUD (HTTP integration).
 
 use axum::http::header;
-use keydock_testkit::{BucketSetup, TestContext};
+use keydock_testkit::{BucketSetup, TestContext, api_error_body_json};
 use rstest::rstest;
-use serde_json::json;
-
-fn err_json(code: u16, msg: &str) -> serde_json::Value {
-    json!({
-        "error": {
-            "code": code,
-            "message": msg
-        }
-    })
-}
 
 #[tokio::test]
 async fn put_text_get_roundtrip() {
@@ -92,7 +82,7 @@ async fn get_missing_returns_404() {
         .authorization_bearer("r")
         .await;
     response.assert_status_not_found();
-    response.assert_json(&err_json(404, "not_found"));
+    response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -124,7 +114,7 @@ async fn key_too_long_returns_400() {
         .authorization_bearer("sec")
         .await;
     response.assert_status_bad_request();
-    response.assert_json(&err_json(400, "bad_request"));
+    response.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -139,7 +129,7 @@ async fn value_too_large_returns_400() {
         .bytes(payload.into())
         .await;
     response.assert_status_bad_request();
-    response.assert_json(&err_json(400, "bad_request"));
+    response.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -160,11 +150,11 @@ async fn delete_existing_then_missing() {
 
     let get = ctx.server.get(&path).authorization_bearer("sec").await;
     get.assert_status_not_found();
-    get.assert_json(&err_json(404, "not_found"));
+    get.assert_json(&api_error_body_json(404, "not_found"));
 
     let del_again = ctx.server.delete(&path).authorization_bearer("sec").await;
     del_again.assert_status_not_found();
-    del_again.assert_json(&err_json(404, "not_found"));
+    del_again.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -173,7 +163,7 @@ async fn put_without_credential_on_restricted_bucket() {
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
     let response = ctx.server.put(&format!("/{bid}/k")).await;
     response.assert_status_unauthorized();
-    response.assert_json(&err_json(401, "unauthorized"));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -186,5 +176,5 @@ async fn put_with_wrong_credential_on_admin_bucket() {
         .authorization_bearer("wrong")
         .await;
     response.assert_status_unauthorized();
-    response.assert_json(&err_json(401, "unauthorized"));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }

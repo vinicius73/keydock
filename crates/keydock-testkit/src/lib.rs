@@ -90,6 +90,16 @@ pub fn basic_auth_header(credential: &str) -> String {
     format!("Basic {encoded}")
 }
 
+/// JSON value matching the stable HTTP error body (`keydock_http::error::ErrorBody`) for assertions.
+pub fn api_error_body_json(code: u16, message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "error": {
+            "code": code,
+            "message": message
+        }
+    })
+}
+
 #[instrument(skip_all)]
 fn build_test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKitError> {
     let dir = tempfile::tempdir()?;

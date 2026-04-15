@@ -5,16 +5,14 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
-use keydock_domain::Key;
 use keydock_state::AppState;
 use keydock_usecase::{KeyService, TxnOp, TxnService};
-use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use tracing::instrument;
 use utoipa::ToSchema;
 
 use crate::error::{bad_request, map_use_case_repo_err};
-use crate::extract::BucketAuth;
+use crate::extract::{BucketAuth, parse_percent_encoded_key};
 
 /// JSON command discriminator for a transaction step.
 #[derive(Debug, Deserialize, ToSchema)]
@@ -41,11 +39,6 @@ pub struct TxnRequest {
     pub txn: Vec<TxnItem>,
 }
 
-fn parse_txn_key(raw: &str) -> Result<Key, Response> {
-    let decoded: Vec<u8> = percent_decode_str(raw).collect();
-    Key::from_bytes(Bytes::from(decoded)).map_err(|_| bad_request())
-}
-
 #[instrument(skip_all, name = "txn::execute_txn")]
 #[utoipa::path(
     post,
@@ -70,7 +63,7 @@ pub async fn execute_txn(
 ) -> Result<Response, Response> {
     let mut ops: Vec<TxnOp> = Vec::with_capacity(req.txn.len());
     for item in &req.txn {
-        let key_dom = parse_txn_key(&item.key)?;
+        let key_dom = parse_percent_encoded_key(&item.key)?;
         match item.cmd {
             TxnCmd::Set => {
                 auth.require_write_on(&key_dom)?;

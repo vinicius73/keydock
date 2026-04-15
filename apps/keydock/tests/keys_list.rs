@@ -2,18 +2,9 @@
 
 use axum::http::StatusCode;
 use axum::http::header;
-use keydock_testkit::{BucketSetup, TestContext};
+use keydock_testkit::{BucketSetup, TestContext, api_error_body_json};
 use pretty_assertions::assert_eq;
 use serde_json::json;
-
-fn err_json(code: u16, msg: &str) -> serde_json::Value {
-    json!({
-        "error": {
-            "code": code,
-            "message": msg
-        }
-    })
-}
 
 #[tokio::test]
 async fn list_empty_bucket_json() {
@@ -175,7 +166,7 @@ async fn list_invalid_format_returns_406() {
         .get(&format!("/{bid}/?format=not-a-format"))
         .await;
     res.assert_status(StatusCode::NOT_ACCEPTABLE);
-    res.assert_json(&err_json(406, "not_acceptable"));
+    res.assert_json(&api_error_body_json(406, "not_acceptable"));
 }
 
 #[tokio::test]
@@ -184,7 +175,7 @@ async fn list_restricted_bucket_anonymous_returns_401() {
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
     let res = ctx.server.get(&format!("/{bid}/")).await;
     res.assert_status_unauthorized();
-    res.assert_json(&err_json(401, "unauthorized"));
+    res.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -197,5 +188,5 @@ async fn list_read_key_returns_403_forbidden() {
         .authorization_bearer("r")
         .await;
     res.assert_status_forbidden();
-    res.assert_json(&err_json(403, "forbidden"));
+    res.assert_json(&api_error_body_json(403, "forbidden"));
 }

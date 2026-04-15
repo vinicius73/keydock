@@ -2,19 +2,9 @@
 
 use axum::http::header;
 use rstest::rstest;
-use serde_json::json;
 use tokio::time::{Duration, sleep};
 
-use keydock_testkit::{BucketSetup, TestContext, TokenSetup};
-
-fn err_json(code: u16, msg: &str) -> serde_json::Value {
-    json!({
-        "error": {
-            "code": code,
-            "message": msg
-        }
-    })
-}
+use keydock_testkit::{BucketSetup, TestContext, TokenSetup, api_error_body_json};
 
 #[tokio::test]
 async fn patch_missing_key_plus_1() {
@@ -136,7 +126,7 @@ async fn patch_invalid_body_returns_400(#[case] body: &str) {
         .text(body)
         .await;
     patch.assert_status_bad_request();
-    patch.assert_json(&err_json(400, "bad_request"));
+    patch.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -159,7 +149,7 @@ async fn patch_non_numeric_existing_value_returns_400() {
         .text("+1")
         .await;
     patch.assert_status_bad_request();
-    patch.assert_json(&err_json(400, "bad_request"));
+    patch.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -182,7 +172,7 @@ async fn patch_overflow_int64_returns_400() {
         .text("+1")
         .await;
     patch.assert_status_bad_request();
-    patch.assert_json(&err_json(400, "bad_request"));
+    patch.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -198,7 +188,7 @@ async fn patch_requires_write_permission() {
         .text("+1")
         .await;
     patch.assert_status_forbidden();
-    patch.assert_json(&err_json(403, "forbidden"));
+    patch.assert_json(&api_error_body_json(403, "forbidden"));
 }
 
 #[tokio::test]
@@ -215,7 +205,7 @@ async fn patch_unauthorized_without_credential() {
 
     let patch = ctx.server.patch(&path).text("+1").await;
     patch.assert_status_unauthorized();
-    patch.assert_json(&err_json(401, "unauthorized"));
+    patch.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -235,7 +225,7 @@ async fn patch_with_ttl_expires() {
 
     let get = ctx.server.get(&path).authorization_bearer("r").await;
     get.assert_status_not_found();
-    get.assert_json(&err_json(404, "not_found"));
+    get.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -269,5 +259,5 @@ async fn patch_scoped_token_prefix_enforced() {
         .text("+1")
         .await;
     patch.assert_status_forbidden();
-    patch.assert_json(&err_json(403, "forbidden"));
+    patch.assert_json(&api_error_body_json(403, "forbidden"));
 }

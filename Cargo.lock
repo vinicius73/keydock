@@ -1388,6 +1388,7 @@ dependencies = [
  "keydock-usecase",
  "metrics-exporter-prometheus",
  "serde",
+ "serde_json",
  "serde_urlencoded",
  "tempfile",
  "thiserror",
