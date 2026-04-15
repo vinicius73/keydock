@@ -3,15 +3,26 @@ use axum::response::{IntoResponse, Response};
 use keydock_usecase::UseCaseError;
 use serde::Serialize;
 use tracing::instrument;
+use utoipa::ToSchema;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ErrorDetail {
+    pub code: u16,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ErrorBody {
-    pub error: String,
+    pub error: ErrorDetail,
 }
 
 fn json_error(status: StatusCode, message: impl Into<String>) -> Response {
+    let msg = message.into();
     let body = ErrorBody {
-        error: message.into(),
+        error: ErrorDetail {
+            code: status.as_u16(),
+            message: msg,
+        },
     };
     (status, axum::Json(body)).into_response()
 }
@@ -59,9 +70,17 @@ pub fn map_use_case_repo_err(err: UseCaseError) -> Response {
             tracing::error!(error = %msg, "repository error");
             internal_error()
         }
-        other => {
-            tracing::error!(?other, "repository error");
-            internal_error()
+        UseCaseError::NotFound => {
+            tracing::debug!("resource not found");
+            not_found()
+        }
+        UseCaseError::Domain(e) => {
+            tracing::debug!(error = %e, "domain validation failed");
+            bad_request()
+        }
+        UseCaseError::NotImplemented => {
+            tracing::debug!("operation not implemented");
+            not_implemented("not implemented")
         }
     }
 }
@@ -95,8 +114,30 @@ mod tests {
     #[case::unauthorized(JsonErrorCase::Unauthorized)]
     #[case::forbidden(JsonErrorCase::Forbidden)]
     #[case::not_found(JsonErrorCase::NotFound)]
-    fn error_helpers_status_and_body_shape(#[case] case: JsonErrorCase) {
+    #[tokio::test]
+    async fn error_helpers_status_and_body_shape(#[case] case: JsonErrorCase) {
+        use serde_json::json;
+
         let (resp, expected) = case.response();
         assert_eq!(resp.status(), expected);
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        let v: serde_json::Value = serde_json::from_slice(&body).expect("json body");
+        let code = expected.as_u16();
+        let msg = match case {
+            JsonErrorCase::Unauthorized => "unauthorized",
+            JsonErrorCase::Forbidden => "forbidden",
+            JsonErrorCase::NotFound => "not_found",
+        };
+        assert_eq!(
+            v,
+            json!({
+                "error": {
+                    "code": code,
+                    "message": msg
+                }
+            })
+        );
     }
 }

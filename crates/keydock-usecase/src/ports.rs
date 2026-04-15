@@ -1,6 +1,8 @@
-use keydock_domain::{BucketId, BucketPolicy};
+use keydock_domain::{BucketId, BucketPolicy, Key, StoredValue};
+use time::OffsetDateTime;
 
 use crate::UseCaseError;
+use crate::keys::StoredEntry;
 
 /// Persistence port for bucket metadata (implemented by `keydock-fjall`).
 pub trait BucketRepository: Send + Sync {
@@ -15,5 +17,15 @@ pub trait BucketRepository: Send + Sync {
 
 /// Persistence port for key-value payloads (implemented by `keydock-fjall`).
 pub trait KeyRepository: Send + Sync {
-    fn not_implemented(&self, bucket: &BucketId) -> Result<(), UseCaseError>;
+    fn get(&self, bucket: &BucketId, key: &Key) -> Result<Option<StoredEntry>, UseCaseError>;
+
+    fn set(
+        &self,
+        bucket: &BucketId,
+        key: &Key,
+        value: StoredValue,
+        expires_at: Option<OffsetDateTime>,
+    ) -> Result<(), UseCaseError>;
+
+    fn delete(&self, bucket: &BucketId, key: &Key) -> Result<bool, UseCaseError>;
 }

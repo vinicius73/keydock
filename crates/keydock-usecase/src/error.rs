@@ -5,6 +5,9 @@ pub enum UseCaseError {
     #[error("not implemented")]
     NotImplemented,
 
+    #[error("not found")]
+    NotFound,
+
     #[error(transparent)]
     Domain(#[from] keydock_domain::DomainError),
 

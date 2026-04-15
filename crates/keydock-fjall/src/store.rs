@@ -2,13 +2,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
-use keydock_domain::{BucketId, BucketPolicy};
-use keydock_usecase::{BucketRepository, KeyRepository, UseCaseError};
+use keydock_domain::{BucketId, BucketPolicy, Key, StoredValue};
+use keydock_usecase::{BucketRepository, KeyRepository, StoredEntry, UseCaseError};
+use time::OffsetDateTime;
 use tracing::instrument;
 
 use crate::FjallError;
 use crate::codec::{decode_policy, encode_policy};
 use crate::layout::{DATA_KEYSPACE, META_KEYSPACE};
+use crate::repos::{data_storage_key, decode_entry, encode_entry};
 
 /// Owns the Fjall [`Database`] handle and keyspaces used by the product.
 #[derive(Clone)]
@@ -16,7 +18,6 @@ pub struct FjallStore {
     #[allow(dead_code)]
     db: Arc<Database>,
     meta: Arc<Keyspace>,
-    #[allow(dead_code)]
     data: Arc<Keyspace>,
 }
 
@@ -79,10 +80,50 @@ impl BucketRepository for FjallStore {
 impl KeyRepository for FjallStore {
     #[instrument(
         skip_all,
-        name = "FjallStore::not_implemented",
-        fields(bucket = %_bucket.as_str())
+        name = "FjallStore::get",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
     )]
-    fn not_implemented(&self, _bucket: &BucketId) -> Result<(), UseCaseError> {
-        Err(UseCaseError::NotImplemented)
+    fn get(&self, bucket: &BucketId, key: &Key) -> Result<Option<StoredEntry>, UseCaseError> {
+        let k = data_storage_key(bucket, key);
+        match self.data.get(&k).map_err(FjallError::from)? {
+            None => Ok(None),
+            Some(v) => {
+                let bytes: &[u8] = v.as_ref();
+                let entry = decode_entry(bytes)?;
+                Ok(Some(entry))
+            }
+        }
+    }
+
+    #[instrument(
+        skip_all,
+        name = "FjallStore::set",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
+    fn set(
+        &self,
+        bucket: &BucketId,
+        key: &Key,
+        value: StoredValue,
+        expires_at: Option<OffsetDateTime>,
+    ) -> Result<(), UseCaseError> {
+        let k = data_storage_key(bucket, key);
+        let bytes = encode_entry(&value, expires_at)?;
+        self.data.insert(&k, bytes).map_err(FjallError::from)?;
+        Ok(())
+    }
+
+    #[instrument(
+        skip_all,
+        name = "FjallStore::delete",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
+    fn delete(&self, bucket: &BucketId, key: &Key) -> Result<bool, UseCaseError> {
+        let k = data_storage_key(bucket, key);
+        let existed = self.data.contains_key(&k).map_err(FjallError::from)?;
+        if existed {
+            self.data.remove(&k).map_err(FjallError::from)?;
+        }
+        Ok(existed)
     }
 }

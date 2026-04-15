@@ -36,6 +36,7 @@ pub struct BucketAuth {
     pub bucket_id: BucketId,
     pub policy_presence: PolicyKeysPresence,
     pub anonymous_access: Permission,
+    pub default_ttl_secs: Option<u64>,
 }
 
 impl fmt::Debug for BucketAuth {
@@ -229,6 +230,7 @@ impl FromRequestParts<AppState> for BucketAuth {
             bucket_id,
             policy_presence: policy_keys_presence(&policy),
             anonymous_access: policy.anonymous_access,
+            default_ttl_secs: policy.default_ttl_secs,
         })
     }
 }
@@ -256,6 +258,7 @@ mod tests {
             bucket_id: BucketId::new("b".to_string()).expect("id"),
             policy_presence: presence,
             anonymous_access: anonymous,
+            default_ttl_secs: None,
         }
     }
 

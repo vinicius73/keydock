@@ -38,6 +38,9 @@ async fn create_restricted_bucket() {
     let response = ctx.server.get(&format!("/{bid}/k1")).await;
     response.assert_status_unauthorized();
     response.assert_json(&json!({
-        "error": "unauthorized"
+        "error": {
+            "code": 401,
+            "message": "unauthorized"
+        }
     }));
 }
