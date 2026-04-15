@@ -11,6 +11,7 @@ use crate::routes::txn::{self, TxnCmd, TxnItem, TxnRequest};
 #[openapi(
     paths(
         health::health_check,
+        health::readiness_check,
         buckets::create_bucket,
         buckets::list_bucket,
         buckets::update_policy,

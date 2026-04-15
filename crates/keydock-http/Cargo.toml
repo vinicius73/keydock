@@ -28,6 +28,7 @@ utoipa = { workspace = true }
 utoipa-swagger-ui = { workspace = true }
 
 [dev-dependencies]
+http-body-util = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 tokio = { workspace = true }

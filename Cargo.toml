@@ -78,6 +78,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 utoipa = { version = "5.4.0", features = ["axum_extras", "time"] }
 utoipa-swagger-ui = { version = "9.0.2", features = ["axum", "vendored"] }
 zeroize = { version = "1.8.2", features = ["derive"] }
+http-body-util = "0.1.3"
 
 # Internal crates (path dependencies; versions follow workspace.package)
 keydock-config = { path = "crates/keydock-config" }
