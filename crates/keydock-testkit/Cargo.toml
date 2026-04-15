@@ -1,0 +1,19 @@
+[package]
+name = "keydock-testkit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+keydock-config = { workspace = true }
+keydock-fjall = { workspace = true }
+keydock-http = { workspace = true }
+keydock-state = { workspace = true }
+keydock-support = { workspace = true }
+keydock-usecase = { workspace = true }
+metrics-exporter-prometheus = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }

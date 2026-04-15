@@ -1,0 +1,12 @@
+[package]
+name = "keydock-state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+keydock-config = { workspace = true }
+keydock-usecase = { workspace = true }
+keydock-support = { workspace = true }

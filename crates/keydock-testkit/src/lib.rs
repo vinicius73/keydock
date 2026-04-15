@@ -1,0 +1,38 @@
+#![forbid(unsafe_code)]
+
+//! Shared test fixtures and HTTP helpers.
+
+use std::sync::Arc;
+
+use keydock_config::ValidatedHttpConfig;
+use keydock_fjall::FjallStore;
+use keydock_http::build_router;
+use keydock_state::AppState;
+use keydock_support::clock::SystemClock;
+use metrics_exporter_prometheus::PrometheusBuilder;
+
+/// Builds a temporary data directory and full Axum app for integration tests.
+pub fn test_app() -> (tempfile::TempDir, axum_test::TestServer) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let store = Arc::new(FjallStore::open(dir.path()).expect("fjall"));
+    let buckets: Arc<dyn keydock_usecase::BucketRepository> = store.clone();
+    let keys: Arc<dyn keydock_usecase::KeyRepository> = store.clone();
+    let clock: Arc<dyn keydock_support::Clock> = Arc::new(SystemClock);
+
+    let http = ValidatedHttpConfig {
+        listen: "127.0.0.1:0".parse().expect("parse"),
+        metrics_listen: None,
+        log_json: false,
+    };
+
+    let state = AppState::new(http, "0.1.0-alpha", clock, buckets, keys);
+
+    let prometheus = PrometheusBuilder::new()
+        .install_recorder()
+        .expect("prometheus recorder");
+
+    let router = build_router(state, prometheus.clone());
+    let server = axum_test::TestServer::new(router);
+
+    (dir, server)
+}
