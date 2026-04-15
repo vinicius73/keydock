@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -88,7 +89,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let root_key = Arc::new(SigningKey::new(Box::new(config.root_key.expose_bytes())));
     let state = AppState::new(env!("CARGO_PKG_VERSION"), clock, buckets, keys, root_key);
 
-    let router = build_router(state, prometheus);
+    let router = build_router(state, prometheus, config.rate_limit.clone());
 
     let addr = config.http.listen;
     let listener = TcpListener::bind(addr)
@@ -106,14 +107,17 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         "gc background sweeper spawned"
     );
 
-    axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            shutdown_signal().await;
-            gc_cancel.cancel();
-            tracing::info!("gc cancellation requested");
-        })
-        .await
-        .context("server")?;
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        shutdown_signal().await;
+        gc_cancel.cancel();
+        tracing::info!("gc cancellation requested");
+    })
+    .await
+    .context("server")?;
 
     tracing::info!("http server stopped");
     Ok(())

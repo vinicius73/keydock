@@ -16,6 +16,7 @@ use tracing::instrument;
 pub use buckets::BucketSetup;
 pub use tokens::{PolicyPatch, TokenSetup};
 
+use keydock_config::RateLimitConfig;
 use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
 use keydock_http::build_router;
@@ -68,6 +69,18 @@ impl TestContext {
         }
     }
 
+    /// Same as [`TestContext::new`], but enables fixed-window rate limiting for tests.
+    #[track_caller]
+    pub fn with_rate_limit(requests_per_hour: u64) -> Self {
+        match build_test_app_with_rate_limit(RateLimitConfig {
+            enabled: true,
+            requests_per_hour,
+        }) {
+            Ok((dir, server)) => Self { _dir: dir, server },
+            Err(e) => panic!("failed to construct test app: {e}"),
+        }
+    }
+
     /// Creates a bucket via `POST /` and returns the bucket id (body text).
     pub async fn create_bucket(&self, setup: BucketSetup) -> String {
         buckets::create_bucket(&self.server, &setup).await
@@ -102,6 +115,13 @@ pub fn api_error_body_json(code: u16, message: &str) -> serde_json::Value {
 
 #[instrument(skip_all)]
 fn build_test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKitError> {
+    build_test_app_with_rate_limit(RateLimitConfig::default())
+}
+
+#[instrument(skip_all)]
+fn build_test_app_with_rate_limit(
+    rate_limit: RateLimitConfig,
+) -> Result<(tempfile::TempDir, axum_test::TestServer), TestKitError> {
     let dir = tempfile::tempdir()?;
     let store = Arc::new(FjallStore::open(dir.path())?);
     let buckets: Arc<dyn keydock_usecase::BucketRepository> = store.clone();
@@ -115,7 +135,7 @@ fn build_test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKi
 
     let prometheus = prometheus_handle()?;
 
-    let router = build_router(state, prometheus.clone());
+    let router = build_router(state, prometheus.clone(), rate_limit);
     let server = axum_test::TestServer::new(router);
 
     Ok((dir, server))
