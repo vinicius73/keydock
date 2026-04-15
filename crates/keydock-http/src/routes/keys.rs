@@ -1,18 +1,18 @@
-use axum::extract::Path;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::response::Response;
 use bytes::Bytes;
 use keydock_domain::Key;
 use keydock_state::AppState;
+use tracing::instrument;
 
-use crate::error::bad_request;
-use crate::error::not_implemented;
+use crate::error::{bad_request, not_implemented};
 use crate::extract::BucketAuth;
 
 fn parse_key(key: &str) -> Result<Key, Response> {
     Key::from_bytes(Bytes::copy_from_slice(key.as_bytes())).map_err(|_| bad_request())
 }
 
+#[instrument(skip_all, name = "keys::get_key")]
 pub async fn get_key(
     State(_state): State<AppState>,
     auth: BucketAuth,
@@ -23,6 +23,7 @@ pub async fn get_key(
     Ok(axum::Json(serde_json::json!({ "ok": true })))
 }
 
+#[instrument(skip_all, name = "keys::put_key")]
 pub async fn put_key(
     State(_state): State<AppState>,
     auth: BucketAuth,
@@ -33,6 +34,7 @@ pub async fn put_key(
     Ok(axum::Json(serde_json::json!({ "ok": true })))
 }
 
+#[instrument(skip_all, name = "keys::delete_key")]
 pub async fn delete_key(
     State(_state): State<AppState>,
     auth: BucketAuth,
@@ -43,6 +45,7 @@ pub async fn delete_key(
     Ok(axum::Json(serde_json::json!({ "ok": true })))
 }
 
+#[instrument(skip_all, name = "keys::patch_key")]
 pub async fn patch_key(
     State(_state): State<AppState>,
     _auth: BucketAuth,

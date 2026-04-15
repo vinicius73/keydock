@@ -6,7 +6,6 @@ use hmac::Mac;
 use hmac::digest::KeyInit;
 use keydock_domain::{BucketId, BucketPolicy, SigningKey, TemporaryTokenClaims};
 use secrecy::ExposeSecret;
-use serde_json;
 use sha2::Sha256;
 use time::OffsetDateTime;
 
@@ -15,6 +14,7 @@ use crate::TokenError;
 type HmacSha256 = hmac::Hmac<Sha256>;
 
 /// Signs JSON claims with the bucket `signing_key`. Format: `base64url(json).base64url(sig)`.
+#[tracing::instrument(skip_all)]
 pub fn mint(claims: &TemporaryTokenClaims, signing_key: &SigningKey) -> Result<String, TokenError> {
     let json = serde_json::to_vec(claims).map_err(|_| TokenError::Serialize)?;
     let sig = hmac_sign(signing_key.expose_secret(), &json)?;
@@ -24,6 +24,7 @@ pub fn mint(claims: &TemporaryTokenClaims, signing_key: &SigningKey) -> Result<S
 }
 
 /// Verifies token signature and claims against policy and bucket.
+#[tracing::instrument(skip_all)]
 pub fn verify(
     raw: &str,
     policy: &BucketPolicy,

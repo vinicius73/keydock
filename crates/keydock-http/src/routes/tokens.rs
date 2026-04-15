@@ -4,13 +4,12 @@ use axum::response::Response;
 use keydock_domain::TemporaryTokenClaims;
 use keydock_state::AppState;
 use keydock_usecase::mint;
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use time::Duration;
+use tracing::instrument;
 
-use crate::error::{bad_request, not_found, service_unavailable};
+use crate::error::{bad_request, map_use_case_repo_err, not_found, service_unavailable};
 use crate::extract::BucketAuth;
-use crate::routes::buckets::map_bucket_repo_err;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateTokenForm {
@@ -42,6 +41,7 @@ fn parse_permissions(raw: &str) -> Result<keydock_domain::Permission, Response> 
     Ok(p)
 }
 
+#[instrument(skip_all, name = "tokens::create_token")]
 pub async fn create_token(
     State(state): State<AppState>,
     auth: BucketAuth,
@@ -50,9 +50,9 @@ pub async fn create_token(
     auth.require_admin()?;
 
     let policy = state
-        .buckets
+        .buckets()
         .get_policy(&auth.bucket_id)
-        .map_err(map_bucket_repo_err)?
+        .map_err(map_use_case_repo_err)?
         .ok_or_else(not_found)?;
 
     let signing_key = policy
@@ -60,7 +60,7 @@ pub async fn create_token(
         .as_ref()
         .ok_or_else(service_unavailable)?;
 
-    let now = state.clock.now_utc();
+    let now = state.clock().now_utc();
     let exp = now
         .checked_add(Duration::seconds(form.ttl))
         .ok_or_else(bad_request)?;

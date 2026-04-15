@@ -18,6 +18,10 @@ pub enum UseCaseError {
 pub enum AuthError {
     #[error("invalid credential")]
     InvalidCredential,
+
+    /// Root or signing key bytes are unusable for HMAC (e.g. empty key material).
+    #[error("invalid key material for credential hashing")]
+    InvalidKeyMaterial,
 }
 
 /// Temporary token mint or verify failure.

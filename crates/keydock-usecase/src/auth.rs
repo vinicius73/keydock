@@ -4,10 +4,12 @@ use hmac::Mac;
 use hmac::digest::KeyInit;
 use keydock_domain::{BucketId, BucketPolicy, Permission, SigningKey};
 use secrecy::ExposeSecret;
+use sha2::Sha256;
 use time::OffsetDateTime;
 
-use crate::tokens;
-use crate::{AuthError, TokenError};
+use crate::{AuthError, tokens};
+
+type HmacSha256 = hmac::Hmac<Sha256>;
 
 /// Identity after resolving HTTP credentials against a bucket policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,13 +23,17 @@ pub enum ResolvedIdentity {
 }
 
 /// Stores `HMAC-SHA256(root_key, raw_credential_bytes)` as bytes.
-pub fn hash_credential(raw: &str, root_key: &SigningKey) -> Vec<u8> {
+#[tracing::instrument(skip_all)]
+pub fn hash_credential(raw: &str, root_key: &SigningKey) -> Result<Vec<u8>, AuthError> {
     hmac_sha256(root_key.expose_secret(), raw.as_bytes())
 }
 
 /// Constant-time compare of presented credential against stored hash.
+#[tracing::instrument(skip_all)]
 pub fn verify_credential(presented: &str, stored_hash: &[u8], root_key: &SigningKey) -> bool {
-    let computed = hash_credential(presented, root_key);
+    let Ok(computed) = hash_credential(presented, root_key) else {
+        return false;
+    };
     computed.len() == stored_hash.len() && crate::ct::eq_bytes(&computed, stored_hash)
 }
 
@@ -35,6 +41,7 @@ pub fn verify_credential(presented: &str, stored_hash: &[u8], root_key: &Signing
 ///
 /// Order: `secret_key_hash` → `write_key_hash` → `read_key_hash` → signed token.
 /// `signing_key` is never matched as a direct credential string.
+#[tracing::instrument(skip_all, fields(bucket = %bucket.as_str()))]
 pub fn resolve(
     raw: Option<&str>,
     policy: &BucketPolicy,
@@ -78,22 +85,18 @@ pub fn resolve(
         });
     }
 
-    match tokens::verify(cred, policy, bucket, now) {
-        Ok(claims) => Ok(ResolvedIdentity::Scoped {
-            permissions: claims.permissions,
-            key_prefix: claims.allowed_prefix,
-        }),
-        Err(TokenError::NoSigningKey) => Err(AuthError::InvalidCredential),
-        Err(_) => Err(AuthError::InvalidCredential),
-    }
+    let claims =
+        tokens::verify(cred, policy, bucket, now).map_err(|_| AuthError::InvalidCredential)?;
+    Ok(ResolvedIdentity::Scoped {
+        permissions: claims.permissions,
+        key_prefix: claims.allowed_prefix,
+    })
 }
 
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
-    use sha2::Sha256;
-    type HmacSha256 = hmac::Hmac<Sha256>;
-    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC accepts any key size");
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, AuthError> {
+    let mut mac = HmacSha256::new_from_slice(key).map_err(|_| AuthError::InvalidKeyMaterial)?;
     mac.update(data);
-    mac.finalize().into_bytes().to_vec()
+    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 #[cfg(test)]
@@ -116,9 +119,9 @@ mod tests {
         BucketPolicy {
             default_ttl_secs: None,
             anonymous_access: Permission::NONE,
-            secret_key_hash: secret.map(|s| hash_credential(s, &rk)),
-            write_key_hash: write.map(|s| hash_credential(s, &rk)),
-            read_key_hash: read.map(|s| hash_credential(s, &rk)),
+            secret_key_hash: secret.map(|s| hash_credential(s, &rk).unwrap()),
+            write_key_hash: write.map(|s| hash_credential(s, &rk).unwrap()),
+            read_key_hash: read.map(|s| hash_credential(s, &rk).unwrap()),
             signing_key: None,
             signing_key_generation: 0,
         }
@@ -127,7 +130,7 @@ mod tests {
     #[test]
     fn hash_verify_roundtrip() {
         let rk = root_key();
-        let h = hash_credential("my-secret", &rk);
+        let h = hash_credential("my-secret", &rk).unwrap();
         assert_eq!(verify_credential("my-secret", &h, &rk), true);
         assert_eq!(verify_credential("wrong", &h, &rk), false);
     }

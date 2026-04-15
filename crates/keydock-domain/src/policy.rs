@@ -15,9 +15,11 @@ pub struct BucketPolicy {
     pub read_key_hash: Option<Vec<u8>>,
     pub write_key_hash: Option<Vec<u8>>,
     pub signing_key: Option<SigningKey>,
+    /// Bumps when the signing key rotates so outstanding tokens can be rejected.
     pub signing_key_generation: u64,
 }
 
+// `SigningKey` is `SecretBox<Vec<u8>>`; `Vec<u8>` is not `CloneableSecret`, so `SecretBox` does not implement `Clone`.
 impl Clone for BucketPolicy {
     fn clone(&self) -> Self {
         Self {

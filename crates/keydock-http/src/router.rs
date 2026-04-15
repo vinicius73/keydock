@@ -6,12 +6,14 @@ use keydock_state::AppState;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
+use tracing::instrument;
 use utoipa::OpenApi;
 
 use crate::openapi::ApiDoc;
 use crate::routes::{buckets, health, keys, tokens};
 
 /// Builds the HTTP service with standard middleware and routes.
+#[instrument(skip_all)]
 pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
     let prom = prometheus.clone();
     let cors = CorsLayer::new()

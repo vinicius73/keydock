@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use thiserror::Error;
+use tracing::instrument;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -71,9 +72,7 @@ pub struct PathsConfig {
 }
 
 fn default_listen() -> SocketAddr {
-    "127.0.0.1:8080"
-        .parse()
-        .expect("default listen address must parse")
+    SocketAddr::from(([127, 0, 0, 1], 8080))
 }
 
 impl Default for Config {
@@ -93,6 +92,7 @@ impl Default for Config {
 }
 
 impl Config {
+    #[instrument(skip_all, fields(path = %path.display()))]
     pub fn load_from_file(path: &std::path::Path) -> Result<Self, ConfigError> {
         let raw = std::fs::read_to_string(path).map_err(|source| ConfigError::Io {
             path: path.to_path_buf(),
@@ -105,6 +105,7 @@ impl Config {
     }
 
     /// Merges CLI overrides (second wins over file), ADR precedence: file then CLI.
+    #[instrument(skip_all, fields(has_listen = listen.is_some(), has_data_dir = data_dir.is_some()))]
     pub fn merge_cli(mut self, listen: Option<SocketAddr>, data_dir: Option<PathBuf>) -> Self {
         if let Some(addr) = listen {
             self.http.listen = addr;
@@ -125,6 +126,7 @@ pub struct ValidatedHttpConfig {
 }
 
 impl ValidatedHttpConfig {
+    #[instrument(skip_all, name = "ValidatedHttpConfig::from_config")]
     pub fn from_config(cfg: &Config) -> Self {
         Self {
             listen: cfg.http.listen,
@@ -140,6 +142,7 @@ pub struct LoadedSecret(pub SecretString);
 
 impl LoadedSecret {
     /// Raw UTF-8 bytes of the configured secret (for deriving [`keydock_domain::SigningKey`]).
+    #[instrument(skip_all, name = "LoadedSecret::expose_bytes")]
     pub fn expose_bytes(&self) -> Vec<u8> {
         self.0.expose_secret().as_bytes().to_vec()
     }

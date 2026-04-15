@@ -4,6 +4,7 @@ use axum::http::{HeaderMap, header};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
 use percent_encoding::percent_decode_str;
+use tracing::instrument;
 
 /// Raw credential material extracted from the wire (never logged).
 #[derive(Clone)]
@@ -27,6 +28,7 @@ impl RawCredential {
 ///
 /// Priority: `Authorization` (Bearer, then Basic) wins over the query string.
 /// Query parameters: `access_token` is preferred over `key` when both are present.
+#[instrument(skip_all)]
 pub fn extract(headers: &HeaderMap, query: Option<&str>) -> Option<RawCredential> {
     if let Some(auth) = headers
         .get(header::AUTHORIZATION)

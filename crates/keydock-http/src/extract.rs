@@ -7,10 +7,11 @@ use axum::http::request::Parts;
 use axum::response::Response;
 use keydock_domain::{BucketId, Key, Permission};
 use keydock_state::AppState;
-use keydock_usecase::{ResolvedIdentity, UseCaseError, resolve};
+use keydock_usecase::{ResolvedIdentity, resolve};
+use tracing::instrument;
 
 use crate::auth::{RawCredential, extract as extract_credential};
-use crate::error::{bad_request, forbidden, internal_error, not_found, unauthorized};
+use crate::error::{bad_request, forbidden, map_use_case_repo_err, not_found, unauthorized};
 
 /// Which API key hashes are configured for the bucket (no secret material).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,7 @@ impl fmt::Debug for BucketAuth {
 }
 
 impl BucketAuth {
+    #[instrument(skip_all, name = "BucketAuth::require_admin")]
     pub fn require_admin(&self) -> Result<(), Response> {
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
@@ -56,6 +58,7 @@ impl BucketAuth {
         }
     }
 
+    #[instrument(skip_all, name = "BucketAuth::require_enumerate")]
     pub fn require_enumerate(&self) -> Result<(), Response> {
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
@@ -76,6 +79,7 @@ impl BucketAuth {
         }
     }
 
+    #[instrument(skip_all, name = "BucketAuth::require_read_on")]
     pub fn require_read_on(&self, key: &Key) -> Result<(), Response> {
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
@@ -99,6 +103,7 @@ impl BucketAuth {
         }
     }
 
+    #[instrument(skip_all, name = "BucketAuth::require_write_on")]
     pub fn require_write_on(&self, key: &Key) -> Result<(), Response> {
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
@@ -124,6 +129,7 @@ impl BucketAuth {
         }
     }
 
+    #[instrument(skip_all, name = "BucketAuth::require_delete_on")]
     pub fn require_delete_on(&self, key: &Key) -> Result<(), Response> {
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
@@ -181,40 +187,39 @@ fn bucket_id_from_path(path: &str) -> Result<BucketId, ()> {
     BucketId::new(segment.to_string()).map_err(|_| ())
 }
 
-fn map_repo_err(err: UseCaseError) -> Response {
-    match err {
-        UseCaseError::Storage(msg) => {
-            tracing::error!(error = %msg, "bucket repository error");
-            internal_error()
-        }
-        other => {
-            tracing::error!(?other, "bucket repository error");
-            internal_error()
-        }
-    }
-}
-
 impl FromRequestParts<AppState> for BucketAuth {
     type Rejection = Response;
 
+    #[instrument(
+        skip_all,
+        name = "BucketAuth::from_request_parts",
+        fields(bucket = tracing::field::Empty)
+    )]
     async fn from_request_parts(
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
         let path = parts.uri.path();
         let bucket_id = bucket_id_from_path(path).map_err(|()| bad_request())?;
+        tracing::Span::current().record("bucket", bucket_id.as_str());
 
         let raw = extract_credential(&parts.headers, parts.uri.query());
         let cred_ref = raw.as_ref().map(RawCredential::as_str);
 
-        let now = state.clock.now_utc();
-        let policy = match state.buckets.get_policy(&bucket_id) {
+        let now = state.clock().now_utc();
+        let policy = match state.buckets().get_policy(&bucket_id) {
             Ok(Some(p)) => p,
             Ok(None) => return Err(not_found()),
-            Err(e) => return Err(map_repo_err(e)),
+            Err(e) => return Err(map_use_case_repo_err(e)),
         };
 
-        let identity = match resolve(cred_ref, &policy, &bucket_id, &state.root_key, now) {
+        let identity = match resolve(
+            cred_ref,
+            &policy,
+            &bucket_id,
+            state.root_key().as_ref(),
+            now,
+        ) {
             Ok(id) => id,
             Err(_) => return Err(unauthorized()),
         };
