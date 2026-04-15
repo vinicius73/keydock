@@ -14,7 +14,7 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use crate::error::not_implemented;
 use crate::openapi::ApiDoc;
-use crate::routes::{buckets, health, keys, tokens};
+use crate::routes::{buckets, health, keys, tokens, txn};
 
 /// Placeholder until M5 exposes `GET /{bucket}` for bucket policy.
 #[instrument(skip_all, name = "router::get_bucket_reserved_for_m5")]
@@ -72,6 +72,7 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
         .route(
             "/{bucket}",
             get(get_bucket_reserved_for_m5)
+                .post(txn::execute_txn)
                 .patch(buckets::update_policy)
                 .delete(buckets::delete_bucket),
         )

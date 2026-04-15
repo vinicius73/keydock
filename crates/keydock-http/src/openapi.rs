@@ -3,8 +3,9 @@ use utoipa::OpenApi;
 use crate::error::{ErrorBody, ErrorDetail};
 use crate::routes::buckets::{self, CreateBucketForm, ListBucketParams, UpdatePolicyForm};
 use crate::routes::health::{self, HealthResponse};
-use crate::routes::keys::{self, PutKeyParams};
+use crate::routes::keys::{self, PatchKeyParams, PutKeyParams};
 use crate::routes::tokens::{self, AccessTokenResponse, CreateTokenForm};
+use crate::routes::txn::{self, TxnCmd, TxnItem, TxnRequest};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -19,13 +20,18 @@ use crate::routes::tokens::{self, AccessTokenResponse, CreateTokenForm};
         keys::get_key,
         keys::put_key_openapi,
         keys::delete_key,
-        keys::patch_key_openapi,
+        keys::patch_key,
+        txn::execute_txn,
     ),
     components(schemas(
         HealthResponse,
         ErrorBody,
         ErrorDetail,
         PutKeyParams,
+        PatchKeyParams,
+        TxnRequest,
+        TxnItem,
+        TxnCmd,
         CreateBucketForm,
         UpdatePolicyForm,
         ListBucketParams,

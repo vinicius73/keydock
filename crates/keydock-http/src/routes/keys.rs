@@ -2,6 +2,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
+use keydock_domain::CounterOp;
 use keydock_domain::Key;
 use keydock_domain::StoredValue;
 use keydock_domain::value::ValueKind;
@@ -12,7 +13,7 @@ use serde::Deserialize;
 use tracing::{debug, instrument};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::error::{bad_request, map_use_case_repo_err, not_implemented};
+use crate::error::{bad_request, map_use_case_repo_err};
 use crate::extract::BucketAuth;
 
 fn parse_key(key: &str) -> Result<Key, Response> {
@@ -47,6 +48,14 @@ fn stored_value_response(value: &StoredValue) -> Result<Response, Response> {
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 #[into_params(parameter_in = Query)]
 pub struct PutKeyParams {
+    /// TTL in seconds (overrides bucket default when set).
+    pub ttl: Option<u64>,
+}
+
+/// Query parameters for `PATCH /{bucket}/{key}` (counter).
+#[derive(Debug, Deserialize, IntoParams, ToSchema)]
+#[into_params(parameter_in = Query)]
+pub struct PatchKeyParams {
     /// TTL in seconds (overrides bucket default when set).
     pub ttl: Option<u64>,
 }
@@ -113,22 +122,6 @@ pub async fn get_key(
 )]
 #[allow(dead_code)]
 pub fn put_key_openapi() {}
-
-/// OpenAPI-only stub: [`patch_key`] currently returns 501 until implemented.
-#[utoipa::path(
-    patch,
-    path = "/{bucket}/{key}",
-    params(
-        ("bucket" = String, Path, description = "Bucket id"),
-        ("key" = String, Path, description = "Key (percent-encoded in the path)"),
-    ),
-    responses(
-        (status = 501, description = "Not implemented", body = crate::error::ErrorBody),
-    ),
-    tag = "keys"
-)]
-#[allow(dead_code)]
-pub fn patch_key_openapi() {}
 
 #[instrument(skip_all, name = "keys::put_key")]
 pub async fn put_key(
@@ -199,11 +192,51 @@ pub async fn delete_key(
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
+#[utoipa::path(
+    patch,
+    path = "/{bucket}/{key}",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+        ("key" = String, Path, description = "Key (percent-encoded in the path)"),
+        PatchKeyParams,
+    ),
+    request_body(content = String, description = "Counter delta: +N or -N (integer or float)"),
+    responses(
+        (status = 200, description = "New counter value (Content-Type depends on stored kind)"),
+        (status = 400, description = "Bad request", body = crate::error::ErrorBody),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorBody),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "keys"
+)]
 #[instrument(skip_all, name = "keys::patch_key")]
 pub async fn patch_key(
-    State(_state): State<AppState>,
-    _auth: BucketAuth,
-    Path((_bucket, _key)): Path<(String, String)>,
-) -> Response {
-    not_implemented("not_implemented")
+    State(state): State<AppState>,
+    auth: BucketAuth,
+    Path((_bucket, key)): Path<(String, String)>,
+    Query(params): Query<PatchKeyParams>,
+    body: Bytes,
+) -> Result<Response, Response> {
+    let key_dom = parse_key(&key)?;
+    auth.require_write_on(&key_dom)?;
+    let op = CounterOp::parse(body.as_ref()).map_err(|_| bad_request())?;
+    let value = KeyService::increment(
+        state.keys().as_ref(),
+        state.clock().as_ref(),
+        &auth.bucket_id,
+        &key_dom,
+        op,
+        params.ttl,
+        auth.default_ttl_secs,
+    )
+    .map_err(map_use_case_repo_err)?;
+    debug!(
+        bucket = %auth.bucket_id.as_str(),
+        key_len = key_dom.as_bytes().len(),
+        value_kind = ?value.kind,
+        ttl_query = ?params.ttl,
+        "counter updated"
+    );
+    stored_value_response(&value)
 }
