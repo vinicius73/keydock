@@ -1,9 +1,9 @@
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
-use keydock_domain::{BucketId, BucketPolicy, CounterOp, Key, StoredValue};
+use keydock_domain::{BucketId, BucketPolicy, CounterOp, CounterValue, Key, StoredValue};
 use keydock_usecase::{
     BucketRepository, KeyRepository, ListEntry, ListOpts, StoredEntry, TxnOp, UseCaseError,
 };
@@ -24,10 +24,11 @@ const REVERSE_LIST_WARN_ENTRY_COUNT: usize = 50_000;
 /// Owns the Fjall [`Database`] handle and keyspaces used by the product.
 #[derive(Clone)]
 pub struct FjallStore {
-    #[allow(dead_code)]
     db: Arc<Database>,
     meta: Arc<Keyspace>,
     data: Arc<Keyspace>,
+    /// Serializes read-modify-write for counters (Fjall has no native compare-and-swap).
+    increment_lock: Arc<Mutex<()>>,
 }
 
 impl FjallStore {
@@ -36,7 +37,12 @@ impl FjallStore {
         let db = Arc::new(Database::builder(path).open()?);
         let meta = Arc::new(db.keyspace(META_KEYSPACE, KeyspaceCreateOptions::default)?);
         let data = Arc::new(db.keyspace(DATA_KEYSPACE, KeyspaceCreateOptions::default)?);
-        Ok(Self { db, meta, data })
+        Ok(Self {
+            db,
+            meta,
+            data,
+            increment_lock: Arc::new(Mutex::new(())),
+        })
     }
 
     #[instrument(skip_all, name = "FjallStore::build_gc_sweeper")]
@@ -251,14 +257,59 @@ impl KeyRepository for FjallStore {
         &self,
         bucket: &BucketId,
         key: &Key,
-        _op: CounterOp,
-        _expires_at: Option<OffsetDateTime>,
+        op: CounterOp,
+        expires_at: Option<OffsetDateTime>,
     ) -> Result<StoredValue, UseCaseError> {
-        Err(UseCaseError::NotImplemented)
+        let _guard = self
+            .increment_lock
+            .lock()
+            .map_err(|_| UseCaseError::Storage("increment lock poisoned".into()))?;
+        let k = data_storage_key(bucket, key);
+        let now = OffsetDateTime::now_utc();
+        let current = match self.data.get(&k).map_err(FjallError::from)? {
+            None => CounterValue::Int(0),
+            Some(v) => {
+                let entry = decode_entry(v.as_ref())?;
+                if let Some(exp) = entry.expires_at
+                    && exp <= now
+                {
+                    CounterValue::Int(0)
+                } else {
+                    CounterValue::from_stored(&entry.value)?
+                }
+            }
+        };
+        let merged = op.apply(current)?;
+        let stored = merged.into_stored()?;
+        let bytes = encode_entry(&stored, expires_at)?;
+        self.data.insert(&k, bytes).map_err(FjallError::from)?;
+        Ok(stored)
     }
 
     #[instrument(skip_all, name = "FjallStore::apply_batch", fields(bucket = %bucket.as_str()))]
-    fn apply_batch(&self, bucket: &BucketId, _ops: &[TxnOp]) -> Result<(), UseCaseError> {
-        Err(UseCaseError::NotImplemented)
+    fn apply_batch(&self, bucket: &BucketId, ops: &[TxnOp]) -> Result<(), UseCaseError> {
+        if ops.is_empty() {
+            return Ok(());
+        }
+        let mut batch = self.db.batch();
+        for op in ops {
+            match op {
+                TxnOp::Set {
+                    key,
+                    value,
+                    expires_at,
+                } => {
+                    let storage_key = data_storage_key(bucket, key);
+                    let bytes = encode_entry(value, *expires_at)?;
+                    batch.insert(self.data.as_ref(), storage_key, bytes);
+                }
+                TxnOp::Delete { key } => {
+                    let storage_key = data_storage_key(bucket, key);
+                    batch.remove(self.data.as_ref(), storage_key);
+                }
+            }
+        }
+        batch.commit().map_err(FjallError::from)?;
+        Ok(())
     }
 }

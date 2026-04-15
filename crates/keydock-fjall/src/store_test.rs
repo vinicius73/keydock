@@ -2,8 +2,10 @@
 
 use bytes::Bytes;
 use keydock_domain::value::ValueKind;
-use keydock_domain::{BucketId, BucketPolicy, Key, Permission, SigningKey, StoredValue};
-use keydock_usecase::{BucketRepository, KeyRepository, ListEntry, ListOpts, hash_credential};
+use keydock_domain::{BucketId, BucketPolicy, CounterOp, Key, Permission, SigningKey, StoredValue};
+use keydock_usecase::{
+    BucketRepository, KeyRepository, ListEntry, ListOpts, TxnOp, hash_credential,
+};
 use pretty_assertions::assert_eq;
 use secrecy::ExposeSecret;
 use std::time::Duration as SweepInterval;
@@ -293,4 +295,177 @@ fn gc_sweep_removes_expired_keys_from_storage() {
             .is_some(),
         true
     );
+}
+
+#[test]
+fn increment_creates_int_from_missing() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"n")).expect("key");
+    let v = KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(5), None).expect("inc");
+    assert_eq!(v.kind, ValueKind::Int64);
+    assert_eq!(v.payload.as_ref(), b"5");
+}
+
+#[test]
+fn increment_creates_negative_from_missing() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"neg")).expect("key");
+    let v = KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(-3), None).expect("inc");
+    assert_eq!(v.payload.as_ref(), b"-3");
+}
+
+#[test]
+fn increment_adds_to_existing_int() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"x")).expect("key");
+    let base = StoredValue::new(Bytes::from_static(b"10"), ValueKind::Int64).expect("value");
+    KeyRepository::set(&store, &bucket, &k, base, None).expect("set");
+    let v = KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(3), None).expect("inc");
+    assert_eq!(v.payload.as_ref(), b"13");
+}
+
+#[test]
+fn increment_promotes_int_to_float() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"promo")).expect("key");
+    let base = StoredValue::new(Bytes::from_static(b"10"), ValueKind::Int64).expect("value");
+    KeyRepository::set(&store, &bucket, &k, base, None).expect("set");
+    let v =
+        KeyRepository::increment(&store, &bucket, &k, CounterOp::Float(1.5), None).expect("inc");
+    assert_eq!(v.kind, ValueKind::Float64);
+    assert_eq!(v.payload.as_ref(), b"11.5");
+}
+
+#[test]
+fn increment_float_stays_float() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"f")).expect("key");
+    let base = StoredValue::new(Bytes::from_static(b"1.5"), ValueKind::Float64).expect("value");
+    KeyRepository::set(&store, &bucket, &k, base, None).expect("set");
+    let v = KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(1), None).expect("inc");
+    assert_eq!(v.kind, ValueKind::Float64);
+    assert_eq!(v.payload.as_ref(), b"2.5");
+}
+
+#[test]
+fn increment_rejects_non_numeric_value() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"txt")).expect("key");
+    let base = StoredValue::new(Bytes::from_static(b"hello"), ValueKind::Utf8).expect("value");
+    KeyRepository::set(&store, &bucket, &k, base, None).expect("set");
+    let err =
+        KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(1), None).expect_err("inc");
+    assert_eq!(
+        matches!(err, keydock_usecase::UseCaseError::Domain(_)),
+        true
+    );
+}
+
+#[test]
+fn increment_rejects_overflow() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k = Key::from_bytes(Bytes::from_static(b"ov")).expect("key");
+    let base = StoredValue::new(
+        Bytes::from(format!("{}", i64::MAX).into_bytes()),
+        ValueKind::Int64,
+    )
+    .expect("value");
+    KeyRepository::set(&store, &bucket, &k, base, None).expect("set");
+    let err =
+        KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(1), None).expect_err("inc");
+    assert_eq!(
+        matches!(err, keydock_usecase::UseCaseError::Domain(_)),
+        true
+    );
+}
+
+#[test]
+fn increment_expired_key_treated_as_missing() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("ts");
+    let k = Key::from_bytes(Bytes::from_static(b"exp")).expect("key");
+    let base = StoredValue::new(Bytes::from_static(b"99"), ValueKind::Int64).expect("value");
+    KeyRepository::set(&store, &bucket, &k, base, Some(now - Duration::seconds(1))).expect("set");
+    let v = KeyRepository::increment(&store, &bucket, &k, CounterOp::Int(1), None).expect("inc");
+    assert_eq!(v.payload.as_ref(), b"1");
+}
+
+#[test]
+fn apply_batch_empty_is_noop() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    KeyRepository::apply_batch(&store, &bucket, &[]).expect("batch");
+}
+
+#[test]
+fn apply_batch_set_and_delete() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let k1 = Key::from_bytes(Bytes::from_static(b"k1")).expect("key");
+    let k2 = Key::from_bytes(Bytes::from_static(b"k2")).expect("key");
+    let v0 = StoredValue::new(Bytes::from_static(b"old"), ValueKind::Utf8).expect("value");
+    KeyRepository::set(&store, &bucket, &k2, v0, None).expect("seed");
+
+    let v1 = StoredValue::new(Bytes::from_static(b"a"), ValueKind::Utf8).expect("value");
+    let ops = vec![
+        TxnOp::Set {
+            key: k1.clone(),
+            value: v1,
+            expires_at: None,
+        },
+        TxnOp::Delete { key: k2.clone() },
+    ];
+    KeyRepository::apply_batch(&store, &bucket, &ops).expect("batch");
+
+    let e1 = KeyRepository::get(&store, &bucket, &k1)
+        .expect("get")
+        .expect("k1");
+    assert_eq!(e1.value.payload.as_ref(), b"a");
+    assert_eq!(KeyRepository::get(&store, &bucket, &k2).expect("get"), None);
+}
+
+#[test]
+fn apply_batch_set_with_ttl() {
+    let dir = tempdir().expect("tempdir");
+    let store = FjallStore::open(dir.path()).expect("open");
+    let bucket = BucketId::new("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".to_string()).expect("id");
+    let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("ts");
+    let k = Key::from_bytes(Bytes::from_static(b"ttl")).expect("key");
+    let v = StoredValue::new(Bytes::from_static(b"x"), ValueKind::Utf8).expect("value");
+    let ops = vec![TxnOp::Set {
+        key: k.clone(),
+        value: v,
+        expires_at: Some(now + Duration::seconds(10)),
+    }];
+    KeyRepository::apply_batch(&store, &bucket, &ops).expect("batch");
+
+    let opts = ListOpts {
+        prefix: None,
+        limit: 10_000,
+        skip: 0,
+        reverse: false,
+        include_values: false,
+        expires_before: Some(now),
+    };
+    let rows = KeyRepository::list(&store, &bucket, &opts).expect("list");
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].key.as_bytes(), b"ttl");
 }
