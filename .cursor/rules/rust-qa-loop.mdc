@@ -1,0 +1,64 @@
+---
+description: Rust QA loop (format, lint, tests) for this workspace
+globs: "{crates,apps}/**/*.rs"
+---
+
+# QA Loop – Quality Validation Process
+
+This repo is a pure Cargo workspace (no SQLx `db-prepare` flow).
+For convenience, the same QA loop is also exposed via the repository `justfile`.
+
+## The loop (run in this order)
+
+1. **Format** (always)
+
+```bash
+cargo fmt --all
+```
+
+2. **Lint** (treat warnings as bugs)
+
+```bash
+cargo clippy --workspace --all-targets
+```
+
+3. **Test** (targeted first, then workspace when finishing)
+
+```bash
+# Targeted (preferred while iterating)
+cargo test -p <package>
+
+# Full workspace (when the task is “done”)
+cargo test --workspace
+```
+
+### Optional: Just wrappers (same commands)
+
+```bash
+# Full QA gate
+just qa
+
+# Iterate on one package
+just qa <package>
+
+# Full workspace tests (final gate)
+just test
+```
+
+## Mapping: change → minimum tests
+
+- **HTTP routes / OpenAPI** (`crates/keydock-http/`, `apps/keydock/`)
+  - Run: `cargo test -p keydock`
+- **Domain rules** (`crates/keydock-domain/`)
+  - Run: `cargo test -p keydock-domain`
+- **Use cases / ports** (`crates/keydock-usecase/`)
+  - Run: `cargo test -p keydock-usecase`
+- **Storage adapter** (`crates/keydock-fjall/`)
+  - Run: `cargo test -p keydock-fjall`
+
+## Final checklist before marking a task “done”
+
+- [ ] `cargo fmt --all`
+- [ ] `cargo clippy --workspace --all-targets`
+- [ ] Targeted package tests for touched crates/apps
+- [ ] `cargo test --workspace` (recommended; mandatory for non-trivial changes)

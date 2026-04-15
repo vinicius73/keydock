@@ -1,0 +1,87 @@
+set dotenv-load := true
+
+export RUST_LOG := env_var_or_default('RUST_LOG', 'info')
+export RUST_BACKTRACE := env_var_or_default('RUST_BACKTRACE', '0')
+
+# Default: show available recipes
+default:
+    @just --list
+
+
+# --- QA loop (repo convention) ---
+# Quick usage:
+# - Full QA gate: `just qa`
+# - Iterate on one package: `just qa keydock-http` (or `just test keydock-http`)
+# - Full workspace tests (final gate): `just test`
+#
+# Package mapping (when you want targeted iteration):
+# - HTTP routes / OpenAPI: `keydock` (integration tests live under `apps/keydock/tests`)
+# - Domain rules: `keydock-domain`
+# - Use cases / ports: `keydock-usecase`
+# - Storage adapter: `keydock-fjall`
+
+[group('qa')]
+fmt:
+    cargo fmt --all
+
+[group('qa')]
+clippy:
+    cargo clippy --workspace --all-targets -- -D warnings
+
+[group('qa')]
+check:
+    cargo check --workspace --all-targets
+
+[group('qa')]
+fix: fmt
+    cargo clippy --workspace --all-targets --fix --allow-dirty
+
+[group('qa')]
+test pkg="":
+    if [ -n "{{ pkg }}" ]; then \
+      cargo test -p "{{ pkg }}"; \
+    else \
+      cargo test --workspace; \
+    fi
+
+[group('qa')]
+qa pkg="": fix
+    just test {{ pkg }}
+
+
+# --- Dev ---
+
+[group('dev')]
+run +ARGS="":
+    cargo run -p keydock -- {{ ARGS }}
+
+[group('dev')]
+serve +ARGS="":
+    cargo run -p keydock -- serve {{ ARGS }}
+
+[group('dev')]
+serve-watch +ARGS="":
+    cargo watch -x 'run -p keydock -- serve {{ ARGS }}'
+
+
+# --- Build / utilities ---
+
+[group('build')]
+build:
+    cargo build --workspace
+
+[group('build')]
+release:
+    cargo build --workspace --release
+
+[group('build')]
+clean:
+    cargo clean
+
+[group('tools')]
+nextest:
+    cargo nextest run --workspace
+
+[group('tools')]
+cov:
+    cargo llvm-cov --workspace --all-targets --lcov --output-path target/lcov.info

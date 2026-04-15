@@ -1,0 +1,139 @@
+---
+description: Project structure guide and file location reference
+alwaysApply: true
+---
+
+# Project Structure Guide
+
+This repository is a Rust workspace organized around:
+
+- `apps/`: runnable binaries (composition roots). Today: `apps/keydock/`.
+- `crates/`: library crates (HTTP edge, domain, use cases, storage, shared utilities).
+- `tests/`: cross-workspace test scaffolding (currently mostly empty; prefer `apps/*/tests` and crate-local tests).
+- `_docs/`: design notes and documentation.
+
+## General Guidelines
+
+### Code Comments
+
+**All code comments must be written in English.** This applies to:
+
+- Inline comments explaining logic
+- Documentation comments (doc comments)
+- TODO comments
+- Function and struct documentation
+- Test descriptions and comments
+
+### Rule Usage
+
+**Always reference and apply related rules based on context.** When working on specific areas of the codebase:
+
+- Review the relevant rule files listed in "Related Rules" below
+- Apply patterns and guidelines from those rules consistently
+- Cross-reference rules when implementing features that span multiple layers (e.g., handlers → services → domains)
+- Follow the established patterns documented in each rule file
+
+> **Important**: This rule file provides structure and location guidance. For specific implementation patterns, error handling, testing, and code style, always consult the corresponding rule files mentioned in the "Related Rules" section.
+
+## Related Rules
+
+This rule is the foundation for all other rules. It is referenced by:
+
+- `.cursor/rules/rust-code-style.mdc` - Code style guidelines
+- `.cursor/rules/rust-style-imports.mdc` - Import organization and naming
+- `.cursor/rules/rust-style-instrumentation.mdc` - Tracing and logging
+- `.cursor/rules/rust-style-testing.mdc` - Testing patterns
+- `.cursor/rules/error-handling.mdc` - Error handling patterns
+- `.cursor/rules/testing-e2e.mdc` - E2E test patterns
+- `.cursor/rules/testing-unit.mdc` - Unit test patterns
+- `.cursor/rules/rust-qa-loop.mdc` - QA validation process
+- `.cursor/rules/async-await-basic.mdc` - Basic async/await patterns
+- `.cursor/rules/async-await.mdc` - Advanced async/await patterns
+
+## Quick Reference for LLMs
+
+**Use this guide to:**
+
+- Find where to implement new features (routes → use cases → domain/storage → tests)
+- Locate existing code when modifying functionality
+- Map route changes to corresponding test files
+
+**Route → Test Mapping:**
+
+- `crates/keydock-http/src/routes/health.rs` → `apps/keydock/tests/health.rs`
+- `crates/keydock-http/src/routes/keys.rs` → add/update tests under `apps/keydock/tests/keys_*.rs`
+- `crates/keydock-http/src/routes/buckets.rs` → add/update tests under `apps/keydock/tests/buckets_*.rs`
+
+> **See**: `.cursor/rules/rust-qa-loop.mdc` for validation commands and `.cursor/rules/testing-e2e.mdc` for HTTP/integration test conventions.
+
+## Main Components
+
+### Backend (Rust)
+
+The backend is split into multiple crates under `crates/`, with a small binary wrapper under `apps/`.
+
+#### Binary (Composition Root)
+
+**Location**: `apps/keydock/src/main.rs`
+**Purpose**: Wiring and process startup only (config loading, tracing, metrics, state construction, HTTP server bind/serve).
+
+#### HTTP Edge (Axum)
+
+**Location**: `crates/keydock-http/`
+**Purpose**: Routing, extractors/DTOs, OpenAPI, and HTTP error mapping. **No business rules.**
+
+- **Router builder**: `crates/keydock-http/src/router.rs` (`build_router`)
+- **Routes**: `crates/keydock-http/src/routes/*.rs`
+- **OpenAPI**: `crates/keydock-http/src/openapi.rs` + route annotations
+- **HTTP error helpers**: `crates/keydock-http/src/error.rs`
+
+#### Business Logic Layer - Domain Models
+
+**Location**: `crates/keydock-domain/`
+**Purpose**: Pure domain types and validations (no IO, no HTTP semantics).
+
+#### Use Cases (Application Layer)
+
+**Location**: `crates/keydock-usecase/`
+**Purpose**: Orchestration and application services. Defines ports (traits) for repositories and other dependencies.
+
+#### Storage / Persistence
+
+**Location**: `crates/keydock-fjall/`
+**Purpose**: Storage implementation backed by `fjall` and repository implementations for the use-case ports.
+
+#### Application State
+
+**Location**: `crates/keydock-state/`
+**Purpose**: Shared Axum state (`AppState`) and `FromRef` selectors for extractors.
+
+#### Configuration / CLI
+
+**Location**: `crates/keydock-config/`
+**Purpose**: CLI parsing (`lexopt`) and config loading/merging/validation.
+
+#### Shared Utilities
+
+**Location**: `crates/keydock-support/`
+**Purpose**: Cross-cutting helpers (e.g., clock abstractions) without pulling heavy dependencies into domain/use cases.
+
+#### Test Kit (Integration Testing)
+
+**Location**: `crates/keydock-testkit/`
+**Purpose**: Shared fixtures for integration tests (temporary data dir, Axum app wiring, `axum_test::TestServer`).
+
+### Configuration & Tooling
+
+- `Cargo.toml` - Workspace and dependency management for Rust
+- `rust-toolchain.toml` - Pinned toolchain for reproducible builds
+- `_docs/` - Architecture and design notes
+
+## Development Workflows
+
+> **See**: `.cursor/rules/rust-qa-loop.mdc` for complete development workflows, validation process, and step-by-step guides for:
+>
+> - Adding/updating HTTP routes
+> - Adding error mapping at the HTTP boundary
+> - Running formatting, linting, and tests
+
+Refer to this rule for an overview of where to find major components and how the project is structured.

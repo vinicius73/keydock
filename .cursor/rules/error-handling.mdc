@@ -1,0 +1,79 @@
+---
+description: Error handling conventions (domain/usecase/storage) and HTTP mapping at the boundary
+globs: "{crates,apps}/**/*.rs"
+---
+
+# Error Handling Guide
+
+This repository does **not** use a single global `AppError`. Instead, it follows a layered approach:
+
+- **Domain errors** live in `crates/keydock-domain` (pure validation/invariants, no IO/HTTP semantics).
+- **Use case errors** live in `crates/keydock-usecase` (orchestration + domain delegation).
+- **Storage/IO errors** live close to the adapter (`crates/keydock-fjall`, etc.).
+- **HTTP error mapping** lives at the boundary in `crates/keydock-http` (Axum `IntoResponse`).
+
+The goal is the same as the “single AppError methodology”, but implemented in a way that matches this codebase:
+typed errors per layer, and a **single mapping point** at the transport boundary.
+
+## Quick Start: Common Patterns (Copy-Paste Ready)
+
+### Domain validation (pure, typed, no HTTP)
+
+```rust
+use keydock_domain::DomainError;
+
+pub fn validate_bucket_id(raw: &str) -> Result<(), DomainError> {
+    if raw.is_empty() {
+        return Err(DomainError::InvalidBucketId(raw.to_string()));
+    }
+    Ok(())
+}
+```
+
+### Use case errors wrap domain errors via `#[from]`
+
+`crates/keydock-usecase/src/error.rs` already models this pattern:
+
+```rust
+use keydock_usecase::UseCaseError;
+
+pub fn do_something_that_can_fail() -> Result<(), UseCaseError> {
+    // Any `DomainError` can be returned with `?` and becomes `UseCaseError::Domain`.
+    Ok(())
+}
+```
+
+### HTTP boundary maps errors to status + JSON body
+
+`crates/keydock-http/src/error.rs` defines the JSON shape:
+
+```rust
+#[derive(Debug, serde::Serialize)]
+pub struct ErrorBody {
+    pub error: String,
+}
+```
+
+## Decision Guide: where should this error live?
+
+| Situation                        | Layer to model it     | Example type                                                                            | Suggested HTTP status |
+| -------------------------------- | --------------------- | --------------------------------------------------------------------------------------- | --------------------- |
+| Input/validation violated        | Domain                | `keydock_domain::DomainError`                                                           | 400                   |
+| Feature not implemented yet      | Use case or HTTP edge | `keydock_usecase::UseCaseError::NotImplemented` or `crate::error::not_implemented(...)` | 501                   |
+| Storage adapter failure          | Adapter               | `keydock_fjall::FjallError`                                                             | 500                   |
+| Unexpected bug / invariant break | Closest layer         | layer error enum + log                                                                  | 500 (generic message) |
+
+## Mandatory Checklist (production-safe defaults)
+
+- [ ] ❌ **NO** `unwrap()` or `expect()` in production code
+  - ✅ Exceptions already used in this repo: tests and a few “must hold” startup defaults (e.g. default listen address parsing).
+- [ ] ✅ Prefer `thiserror` + `#[from]` for transparent conversions across layers.
+- [ ] ✅ Use `?` for propagation; only use `map_err` when changing error types intentionally.
+- [ ] ✅ Keep domain/usecase errors free of HTTP types (`StatusCode`, `Response`, `IntoResponse`).
+- [ ] ✅ Map to HTTP responses **only** in `crates/keydock-http` (single conversion point).
+
+## Related Rules
+
+- `.cursor/rules/project-structure.mdc` - Where errors and routes live
+- `.cursor/rules/testing-e2e.mdc` - How to assert error responses
+- `.cursor/rules/rust-code-style.mdc` - `?`, `thiserror`, and no-unwrap guidelines

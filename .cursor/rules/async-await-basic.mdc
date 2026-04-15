@@ -1,0 +1,110 @@
+---
+description: Basic async/await and Tokio runtime patterns
+globs: "{crates,apps}/**/*.rs"
+---
+
+# Async/Await - Basic Patterns
+
+This project uses `tokio` as the async runtime. Follow these fundamental patterns.
+
+## Related Rules
+
+This rule works together with:
+
+- `.cursor/rules/async-await.mdc` - Advanced async patterns (JoinSet, backpressure, etc.)
+- `.cursor/rules/rust-code-style.mdc` - Code style patterns (formatting, imports, instrumentation)
+- `.cursor/rules/error-handling.mdc` - Error handling patterns (when handling async errors)
+- `.cursor/rules/project-structure.mdc` - Project structure and file locations
+
+## Tokio Runtime
+
+The project uses `tokio` with full features:
+
+```rust
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // async code
+}
+```
+
+## Basic Task Spawning
+
+Use `tokio::spawn` with proper error handling:
+
+```rust
+// Basic spawning
+let handle = tokio::spawn(async move {
+    process_deal(deal_id).await
+});
+
+let result = handle.await?;
+```
+
+## Basic Timeout Patterns
+
+Use timeouts for operations that might hang:
+
+```rust
+use tokio::time::{timeout, Duration};
+
+// Timeout with error handling
+let result = timeout(Duration::from_secs(30), scrape_product(url)).await?;
+```
+
+## Async Function Signatures
+
+**MUST** always mark async functions with `async` and use appropriate return types:
+
+```rust
+pub async fn get_key(bucket: &str, key: &str) -> Result<Vec<u8>, keydock_usecase::UseCaseError> {
+    // async function
+}
+```
+
+In this repository, prefer returning **typed errors** from library crates
+(e.g. `Result<T, keydock_usecase::UseCaseError>`) and use `anyhow::Result` only at
+composition roots (binaries under `apps/`).
+
+## Async Instrumentation
+
+Always instrument async functions:
+
+```rust
+use tracing::instrument;
+
+#[instrument(skip_all, fields(bucket = bucket, key = key))]
+pub async fn process_key(bucket: &str, key: &str) -> Result<(), keydock_usecase::UseCaseError> {
+    // instrumented async function
+    Ok(())
+}
+```
+
+## Basic Error Handling
+
+Use `?` operator for error propagation in async functions:
+
+```rust
+pub async fn with_timeout<T>(
+    timeout_secs: u64,
+    fut: impl std::future::Future<Output = Result<T, keydock_usecase::UseCaseError>>,
+) -> Result<T, keydock_usecase::UseCaseError> {
+    let result = tokio::time::timeout(Duration::from_secs(timeout_secs), fut).await;
+
+    match result {
+        Ok(r) => r,
+        Err(_) => Err(keydock_usecase::UseCaseError::NotImplemented),
+    }
+}
+```
+
+## Best Practices
+
+- Use `tokio::spawn` for concurrent operations
+- Use `timeout` for operations that might hang
+- Always instrument async functions with `tracing::instrument`
+- Use `?` operator for error propagation
+- Prefer async/await over manual future composition for simple cases
+
+## Related Rules
+
+- `.cursor/rules/async-await.mdc` - Advanced async patterns (JoinSet, backpressure, CancellationToken, etc.)

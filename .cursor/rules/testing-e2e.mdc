@@ -1,0 +1,77 @@
+---
+description: HTTP integration testing (Axum routes) with axum-test + keydock-testkit
+globs: "apps/**/tests/**/*.rs"
+---
+
+# HTTP Integration Testing Guidelines
+
+This repository tests HTTP routes primarily via integration tests under `apps/*/tests/`
+using `keydock_testkit::test_app()` (which wires a full Axum router) and `axum_test::TestServer`.
+
+## Related Rules
+
+- `.cursor/rules/project-structure.mdc` - Where routes and tests live
+- `.cursor/rules/error-handling.mdc` - Error shapes and mapping at the HTTP boundary
+- `.cursor/rules/rust-style-testing.mdc` - Assertions and general test style
+
+## File Organization
+
+- **App integration tests**: `apps/<app>/tests/*.rs` (preferred for HTTP)
+  - Example: `apps/keydock/tests/health.rs`
+- **Shared fixtures**: `crates/keydock-testkit/`
+  - Example helper: `keydock_testkit::test_app()`
+
+## Mandatory Requirement: assert the complete response you care about
+
+**MUST** assert the full JSON shape for the endpoint under test.
+
+- For small responses (like `/health`), assert the entire JSON body.
+- For larger responses, assert all fields that are part of the public API contract (including nullables if present).
+
+## Standard Pattern
+
+```rust
+use serde_json::Value;
+
+#[tokio::test]
+async fn route_returns_expected_body() {
+    let (_dir, server) = keydock_testkit::test_app();
+
+    let response = server.get("/health").await;
+    response.assert_status_ok();
+
+    let body: Value = response.json();
+    assert_eq!(body, serde_json::json!({
+        "status": "ok",
+        "version": "0.1.0-alpha"
+    }));
+}
+```
+
+## Testing error responses
+
+This repo’s current baseline error body is:
+
+```json
+{ "error": "<message>" }
+```
+
+When testing error responses:
+
+- **MUST** assert the HTTP status code.
+- **MUST** assert the JSON error body shape.
+- **SHOULD** avoid asserting internal/library error messages (prefer stable, user-facing messages).
+
+## Commands
+
+Run integration tests with:
+
+```bash
+cargo test -p keydock
+```
+
+Or, using the repository `justfile` wrappers:
+
+```bash
+just test keydock
+```
