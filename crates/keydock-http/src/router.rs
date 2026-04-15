@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use axum::{
     Router,
     http::{HeaderValue, Method, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use keydock_config::RateLimitConfig;
 use keydock_state::AppState;
 use metrics_exporter_prometheus::PrometheusHandle;
 use tower_http::cors::{Any, CorsLayer};
@@ -15,7 +18,7 @@ use utoipa_swagger_ui::SwaggerUi;
 use axum::middleware;
 
 use crate::error::not_implemented;
-use crate::middleware::metrics;
+use crate::middleware::{metrics, rate_limit};
 use crate::openapi::ApiDoc;
 use crate::routes::{buckets, health, keys, tokens, txn};
 
@@ -27,7 +30,12 @@ async fn get_bucket_reserved_for_m5() -> Response {
 
 /// Builds the HTTP service with standard middleware and routes.
 #[instrument(skip_all)]
-pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
+pub fn build_router(
+    state: AppState,
+    prometheus: PrometheusHandle,
+    rate_limit_cfg: RateLimitConfig,
+) -> Router {
+    let rate_for_layer = Arc::new(rate_limit::RateLimitState::new(rate_limit_cfg));
     let prom = prometheus.clone();
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -80,6 +88,10 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle) -> Router {
                 .patch(buckets::update_policy)
                 .delete(buckets::delete_bucket),
         )
+        .layer(middleware::from_fn(move |req, next| {
+            let st = Arc::clone(&rate_for_layer);
+            async move { rate_limit::enforce_rate_limit(st, req, next).await }
+        }))
         .layer(middleware::from_fn(metrics::track_http_metrics))
         .layer(TraceLayer::new_for_http())
         .layer(cors)

@@ -63,6 +63,11 @@ pub fn service_unavailable() -> Response {
 }
 
 #[instrument(skip_all)]
+pub fn rate_limit_exceeded() -> Response {
+    json_error(StatusCode::TOO_MANY_REQUESTS, "rate limit exceeded")
+}
+
+#[instrument(skip_all)]
 pub fn internal_error() -> Response {
     json_error(StatusCode::INTERNAL_SERVER_ERROR, "internal_error")
 }
