@@ -1,6 +1,7 @@
 //! Fixed-window rate limiting per client IP.
 
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -13,6 +14,7 @@ use axum::middleware::Next;
 use axum::response::Response;
 use keydock_config::RateLimitConfig;
 use time::OffsetDateTime;
+use tracing::instrument;
 
 use crate::error::{internal_error, rate_limit_exceeded};
 
@@ -39,13 +41,7 @@ impl RateLimitState {
     }
 }
 
-fn header_u64(name: &'static str, value: u64) -> Option<(HeaderName, HeaderValue)> {
-    let name = HeaderName::from_static(name);
-    let value = HeaderValue::from_str(&value.to_string()).ok()?;
-    Some((name, value))
-}
-
-fn header_i64(name: &'static str, value: i64) -> Option<(HeaderName, HeaderValue)> {
+fn header_num(name: &'static str, value: impl Display) -> Option<(HeaderName, HeaderValue)> {
     let name = HeaderName::from_static(name);
     let value = HeaderValue::from_str(&value.to_string()).ok()?;
     Some((name, value))
@@ -70,19 +66,24 @@ fn apply_rate_limit_headers(
     reset_unix: i64,
 ) -> Response {
     let headers = resp.headers_mut();
-    if let Some((n, v)) = header_u64("x-ratelimit-limit", limit) {
+    if let Some((n, v)) = header_num("x-ratelimit-limit", limit) {
         headers.insert(n, v);
     }
-    if let Some((n, v)) = header_u64("x-ratelimit-remaining", remaining) {
+    if let Some((n, v)) = header_num("x-ratelimit-remaining", remaining) {
         headers.insert(n, v);
     }
-    if let Some((n, v)) = header_i64("x-ratelimit-reset", reset_unix) {
+    if let Some((n, v)) = header_num("x-ratelimit-reset", reset_unix) {
         headers.insert(n, v);
     }
     resp
 }
 
 /// Enforces `[rate_limit]` when enabled; adds `X-Ratelimit-*` headers when active.
+#[instrument(
+    skip_all,
+    name = "rate_limit::enforce_rate_limit",
+    fields(limit = state.config.requests_per_hour)
+)]
 pub async fn enforce_rate_limit(
     state: Arc<RateLimitState>,
     req: Request<Body>,
@@ -118,7 +119,9 @@ pub async fn enforce_rate_limit(
             entry.window_start_unix = now_unix;
         }
 
-        let reset_ts = entry.window_start_unix.saturating_add(3600);
+        let reset_ts = entry
+            .window_start_unix
+            .saturating_add(WINDOW.as_secs() as i64);
 
         if entry.count >= limit {
             RateLimitDecision::Deny { limit, reset_ts }

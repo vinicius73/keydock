@@ -239,17 +239,11 @@ pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, In
             })?;
 
     let config = Config {
-        http: HttpConfig {
-            listen: default_listen(),
-            metrics_listen: None,
-        },
         paths: PathsConfig {
             data_dir: data_dir_canonical,
         },
-        log_json: false,
         root_key: default_root_key(),
-        gc: GcConfig::default(),
-        rate_limit: RateLimitConfig::default(),
+        ..Config::default()
     };
 
     let toml_str = toml::to_string_pretty(&config)?;
@@ -379,7 +373,7 @@ mod tests {
         let instance = dir.path().join("instance");
         write_init_config(&instance, false).expect("first write");
         let err = write_init_config(&instance, false).unwrap_err();
-        assert_eq!(matches!(err, InitError::AlreadyExists { .. }), true);
+        assert!(matches!(err, InitError::AlreadyExists { .. }));
     }
 
     #[rstest]
@@ -391,6 +385,6 @@ mod tests {
         write_init_config(&instance, first_force).expect("first write");
         let path = write_init_config(&instance, true).expect("second write with force");
         let loaded = Config::load_from_file(&path).expect("load");
-        assert_eq!(loaded.root_key.expose_bytes().is_empty(), false);
+        assert!(!loaded.root_key.expose_bytes().is_empty());
     }
 }
