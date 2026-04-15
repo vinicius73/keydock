@@ -7,6 +7,8 @@ rust-version.workspace = true
 
 [dependencies]
 axum-test = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
 keydock-domain = { workspace = true }
 keydock-fjall = { workspace = true }
 keydock-http = { workspace = true }
@@ -14,6 +16,8 @@ keydock-state = { workspace = true }
 keydock-support = { workspace = true }
 keydock-usecase = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
+serde = { workspace = true }
+serde_urlencoded = { workspace = true }
 tempfile = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

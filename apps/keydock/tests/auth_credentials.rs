@@ -1,30 +1,15 @@
 //! Credential channel and permission matrix (HTTP integration).
 
-mod common;
-
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD as BASE64_STD;
+use keydock_testkit::{BucketSetup, TestContext, basic_auth_header};
 use serde_json::json;
-
-use common::buckets::{CreateBucketForm, create_bucket};
 
 #[tokio::test]
 async fn bearer_secret_key_grants_admin() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    let response = server
+    let response = ctx
+        .server
         .put(&format!("/{bid}/k1"))
         .authorization_bearer("sec")
         .await;
@@ -36,27 +21,21 @@ async fn bearer_secret_key_grants_admin() {
 
 #[tokio::test]
 async fn bearer_write_key_grants_write() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: Some("r".into()),
-            write_key: Some("w".into()),
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
 
-    let ok = server
+    let ok = ctx
+        .server
         .put(&format!("/{bid}/k1"))
         .authorization_bearer("w")
         .await;
     ok.assert_status_ok();
+    ok.assert_json(&json!({
+        "ok": true
+    }));
 
-    let forbidden = server
+    let forbidden = ctx
+        .server
         .put(&format!("/{bid}/k1"))
         .authorization_bearer("r")
         .await;
@@ -68,27 +47,20 @@ async fn bearer_write_key_grants_write() {
 
 #[tokio::test]
 async fn bearer_read_key_grants_read() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: Some("r".into()),
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let ok = server
+    let ok = ctx
+        .server
         .get(&format!("/{bid}/k1"))
         .authorization_bearer("r")
         .await;
     ok.assert_status_ok();
+    ok.assert_json(&json!({
+        "ok": true
+    }));
 
-    let unauthorized = server.get(&format!("/{bid}/k1")).await;
+    let unauthorized = ctx.server.get(&format!("/{bid}/k1")).await;
     unauthorized.assert_status_unauthorized();
     unauthorized.assert_json(&json!({
         "error": "unauthorized"
@@ -97,85 +69,51 @@ async fn bearer_read_key_grants_read() {
 
 #[tokio::test]
 async fn query_param_access_token_works() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: Some("r".into()),
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = server.get(&format!("/{bid}/k1?access_token=r")).await;
+    let response = ctx.server.get(&format!("/{bid}/k1?access_token=r")).await;
     response.assert_status_ok();
+    response.assert_json(&json!({
+        "ok": true
+    }));
 }
 
 #[tokio::test]
 async fn query_param_key_works() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: Some("r".into()),
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = server.get(&format!("/{bid}/k1?key=r")).await;
+    let response = ctx.server.get(&format!("/{bid}/k1?key=r")).await;
     response.assert_status_ok();
+    response.assert_json(&json!({
+        "ok": true
+    }));
 }
 
 #[tokio::test]
 async fn basic_auth_works() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: Some("r".into()),
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let encoded = BASE64_STD.encode(b"r:ignored");
-    let response = server
+    let response = ctx
+        .server
         .get(&format!("/{bid}/k1"))
-        .authorization(format!("Basic {encoded}"))
+        .authorization(basic_auth_header("r"))
         .await;
     response.assert_status_ok();
+    response.assert_json(&json!({
+        "ok": true
+    }));
 }
 
 #[tokio::test]
 async fn wrong_credential_returns_401() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    let response = server
+    let response = ctx
+        .server
         .get(&format!("/{bid}/k1"))
         .authorization_bearer("wrong")
         .await;
@@ -187,8 +125,8 @@ async fn wrong_credential_returns_401() {
 
 #[tokio::test]
 async fn missing_bucket_returns_404() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let response = server.get("/no-such-bucket/k").await;
+    let ctx = TestContext::new();
+    let response = ctx.server.get("/no-such-bucket/k").await;
     response.assert_status_not_found();
     response.assert_json(&json!({
         "error": "not_found"
@@ -197,21 +135,10 @@ async fn missing_bucket_returns_404() {
 
 #[tokio::test]
 async fn anonymous_public_bucket_read() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: None,
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::public()).await;
 
-    let response = server.get(&format!("/{bid}/k1")).await;
+    let response = ctx.server.get(&format!("/{bid}/k1")).await;
     response.assert_status_ok();
 
     response.assert_json(&json!({
@@ -221,21 +148,10 @@ async fn anonymous_public_bucket_read() {
 
 #[tokio::test]
 async fn anonymous_restricted_bucket_read() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: None,
-            read_key: Some("r".into()),
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = server.get(&format!("/{bid}/k1")).await;
+    let response = ctx.server.get(&format!("/{bid}/k1")).await;
     response.assert_status_unauthorized();
 
     response.assert_json(&json!({

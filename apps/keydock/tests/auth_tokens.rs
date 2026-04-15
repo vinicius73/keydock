@@ -1,11 +1,7 @@
 //! Temporary token lifecycle and scope (HTTP integration).
 
-mod common;
-
+use keydock_testkit::{BucketSetup, PolicyPatch, TestContext, TokenSetup};
 use serde_json::{Value, json};
-
-use common::buckets::{CreateBucketForm, create_bucket};
-use common::tokens::{CreateTokenForm, UpdatePolicyForm, create_token, patch_policy};
 
 #[track_caller]
 fn access_token_str(body: &Value) -> &str {
@@ -16,32 +12,23 @@ fn access_token_str(body: &Value) -> &str {
 
 #[tokio::test]
 async fn create_token_requires_admin() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
+    let ctx = TestContext::new();
+    let bid = ctx
+        .create_bucket(BucketSetup {
             write_key: Some("w".into()),
             signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+            ..BucketSetup::admin("sec")
+        })
+        .await;
 
-    let form = CreateTokenForm {
-        prefix: None,
-        permissions: "read".into(),
-        ttl: 3600,
-    };
-    let forbidden = create_token(&server, &bid, "w", &form).await;
+    let form = TokenSetup::read(3600);
+    let forbidden = ctx.create_token(&bid, "w", &form).await;
     forbidden.assert_status_forbidden();
     forbidden.assert_json(&json!({
         "error": "forbidden"
     }));
 
-    let ok = create_token(&server, &bid, "sec", &form).await;
+    let ok = ctx.create_token(&bid, "sec", &form).await;
     ok.assert_status_ok();
     let body: Value = ok.json();
     let access = access_token_str(&body).to_string();
@@ -53,26 +40,11 @@ async fn create_token_requires_admin() {
 
 #[tokio::test]
 async fn token_read_within_prefix() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
-    let form = CreateTokenForm {
-        prefix: Some("user:42:".into()),
-        permissions: "read".into(),
-        ttl: 3600,
-    };
-    let tok = create_token(&server, &bid, "sec", &form).await;
+    let form = TokenSetup::read_prefixed("user:42:", 3600);
+    let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
     let access = access_token_str(&token).to_string();
@@ -80,7 +52,8 @@ async fn token_read_within_prefix() {
         "access_token": access
     }));
 
-    let ok = server
+    let ok = ctx
+        .server
         .get(&format!("/{bid}/user:42:name"))
         .authorization_bearer(&access)
         .await;
@@ -92,26 +65,11 @@ async fn token_read_within_prefix() {
 
 #[tokio::test]
 async fn token_read_outside_prefix() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
-    let form = CreateTokenForm {
-        prefix: Some("user:42:".into()),
-        permissions: "read".into(),
-        ttl: 3600,
-    };
-    let tok = create_token(&server, &bid, "sec", &form).await;
+    let form = TokenSetup::read_prefixed("user:42:", 3600);
+    let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
     let access = access_token_str(&token).to_string();
@@ -119,7 +77,8 @@ async fn token_read_outside_prefix() {
         "access_token": access
     }));
 
-    let response = server
+    let response = ctx
+        .server
         .get(&format!("/{bid}/admin:config"))
         .authorization_bearer(&access)
         .await;
@@ -131,26 +90,11 @@ async fn token_read_outside_prefix() {
 
 #[tokio::test]
 async fn token_expired() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
-    let form = CreateTokenForm {
-        prefix: None,
-        permissions: "read".into(),
-        ttl: 0,
-    };
-    let tok = create_token(&server, &bid, "sec", &form).await;
+    let form = TokenSetup::expired();
+    let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
     let access = access_token_str(&token).to_string();
@@ -158,7 +102,8 @@ async fn token_expired() {
         "access_token": access
     }));
 
-    let response = server
+    let response = ctx
+        .server
         .get(&format!("/{bid}/k1"))
         .authorization_bearer(&access)
         .await;
@@ -170,38 +115,22 @@ async fn token_expired() {
 
 #[tokio::test]
 async fn token_wrong_bucket() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let a = create_bucket(
-        &server,
-        &CreateBucketForm {
+    let ctx = TestContext::new();
+    let a = ctx
+        .create_bucket(BucketSetup {
             email: "a@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
-    let b = create_bucket(
-        &server,
-        &CreateBucketForm {
+            ..BucketSetup::signed("sec", "sign")
+        })
+        .await;
+    let b = ctx
+        .create_bucket(BucketSetup {
             email: "b@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
-            signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+            ..BucketSetup::signed("sec", "sign")
+        })
+        .await;
 
-    let form = CreateTokenForm {
-        prefix: None,
-        permissions: "read".into(),
-        ttl: 3600,
-    };
-    let tok = create_token(&server, &a, "sec", &form).await;
+    let form = TokenSetup::read(3600);
+    let tok = ctx.create_token(&a, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
     let access = access_token_str(&token).to_string();
@@ -209,7 +138,8 @@ async fn token_wrong_bucket() {
         "access_token": access
     }));
 
-    let response = server
+    let response = ctx
+        .server
         .get(&format!("/{b}/k1"))
         .authorization_bearer(&access)
         .await;
@@ -221,26 +151,16 @@ async fn token_wrong_bucket() {
 
 #[tokio::test]
 async fn token_invalidated_after_signing_key_rotation() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
-            secret_key: Some("sec".into()),
-            read_key: None,
-            write_key: None,
+    let ctx = TestContext::new();
+    let bid = ctx
+        .create_bucket(BucketSetup {
             signing_key: Some("sign1".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+            ..BucketSetup::admin("sec")
+        })
+        .await;
 
-    let form = CreateTokenForm {
-        prefix: None,
-        permissions: "read".into(),
-        ttl: 3600,
-    };
-    let tok = create_token(&server, &bid, "sec", &form).await;
+    let form = TokenSetup::read(3600);
+    let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
     let access = access_token_str(&token).to_string();
@@ -248,7 +168,8 @@ async fn token_invalidated_after_signing_key_rotation() {
         "access_token": access
     }));
 
-    let ok_before = server
+    let ok_before = ctx
+        .server
         .get(&format!("/{bid}/k1"))
         .authorization_bearer(&access)
         .await;
@@ -257,18 +178,13 @@ async fn token_invalidated_after_signing_key_rotation() {
         "ok": true
     }));
 
-    let patch = patch_policy(
-        &server,
-        &bid,
-        "sec",
-        &UpdatePolicyForm {
-            signing_key: Some("sign2".into()),
-        },
-    )
-    .await;
+    let patch = ctx
+        .patch_policy(&bid, "sec", &PolicyPatch::rotate_signing_key("sign2"))
+        .await;
     patch.assert_status_no_content();
 
-    let unauthorized = server
+    let unauthorized = ctx
+        .server
         .get(&format!("/{bid}/k1"))
         .authorization_bearer(&access)
         .await;
@@ -277,7 +193,7 @@ async fn token_invalidated_after_signing_key_rotation() {
         "error": "unauthorized"
     }));
 
-    let tok2 = create_token(&server, &bid, "sec", &form).await;
+    let tok2 = ctx.create_token(&bid, "sec", &form).await;
     tok2.assert_status_ok();
     let token2: Value = tok2.json();
     let access2 = access_token_str(&token2).to_string();
@@ -285,7 +201,8 @@ async fn token_invalidated_after_signing_key_rotation() {
         "access_token": access2
     }));
 
-    let ok_after = server
+    let ok_after = ctx
+        .server
         .get(&format!("/{bid}/k1"))
         .authorization_bearer(&access2)
         .await;

@@ -1,31 +1,22 @@
 //! Bucket creation flows (HTTP integration).
 
-mod common;
-
+use keydock_testkit::{BucketSetup, TestContext};
 use rstest::rstest;
 use serde_json::json;
 use uuid::Uuid;
-
-use common::buckets::{CreateBucketForm, create_bucket};
 
 #[rstest]
 #[case("owner@example.com")]
 #[case("other@example.net")]
 #[tokio::test]
 async fn create_public_bucket(#[case] email: &str) {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
+    let ctx = TestContext::new();
+    let bid = ctx
+        .create_bucket(BucketSetup {
             email: email.into(),
-            secret_key: None,
-            read_key: None,
-            write_key: None,
-            signing_key: None,
-            default_ttl: None,
-        },
-    )
-    .await;
+            ..BucketSetup::public()
+        })
+        .await;
 
     assert!(!bid.is_empty());
     assert!(Uuid::parse_str(&bid).is_ok());
@@ -33,21 +24,18 @@ async fn create_public_bucket(#[case] email: &str) {
 
 #[tokio::test]
 async fn create_restricted_bucket() {
-    let (_dir, server) = keydock_testkit::test_app().expect("test_app");
-    let bid = create_bucket(
-        &server,
-        &CreateBucketForm {
-            email: "o@example.com".into(),
+    let ctx = TestContext::new();
+    let bid = ctx
+        .create_bucket(BucketSetup {
             secret_key: Some("s".into()),
             read_key: Some("r".into()),
             write_key: Some("w".into()),
             signing_key: Some("sign".into()),
-            default_ttl: None,
-        },
-    )
-    .await;
+            ..BucketSetup::default()
+        })
+        .await;
 
-    let response = server.get(&format!("/{bid}/k1")).await;
+    let response = ctx.server.get(&format!("/{bid}/k1")).await;
     response.assert_status_unauthorized();
     response.assert_json(&json!({
         "error": "unauthorized"

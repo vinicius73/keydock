@@ -120,7 +120,7 @@ The backend is split into multiple crates under `crates/`, with a small binary w
 #### Test Kit (Integration Testing)
 
 **Location**: `crates/keydock-testkit/`
-**Purpose**: Shared fixtures for integration tests (temporary data dir, Axum app wiring, `axum_test::TestServer`).
+**Purpose**: Shared fixtures for integration tests (`TestContext`: temporary data dir, Axum app wiring, `axum_test::TestServer`).
 
 ### Configuration & Tooling
 
