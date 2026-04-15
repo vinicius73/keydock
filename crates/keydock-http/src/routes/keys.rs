@@ -103,6 +103,22 @@ pub async fn get_key(
 #[allow(dead_code)]
 pub fn put_key_openapi() {}
 
+/// OpenAPI-only stub: [`patch_key`] currently returns 501 until implemented.
+#[utoipa::path(
+    patch,
+    path = "/{bucket}/{key}",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+        ("key" = String, Path, description = "Key (percent-encoded in the path)"),
+    ),
+    responses(
+        (status = 501, description = "Not implemented", body = crate::error::ErrorBody),
+    ),
+    tag = "keys"
+)]
+#[allow(dead_code)]
+pub fn patch_key_openapi() {}
+
 #[instrument(skip_all, name = "keys::put_key")]
 pub async fn put_key(
     State(state): State<AppState>,

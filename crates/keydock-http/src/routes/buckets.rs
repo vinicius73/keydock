@@ -7,14 +7,15 @@ use keydock_domain::{BucketId, BucketPolicy, Permission, SigningKey};
 use keydock_state::AppState;
 use keydock_usecase::hash_credential;
 use secrecy::ExposeSecret;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tracing::instrument;
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::error::{bad_request, internal_error, map_use_case_repo_err, not_found};
 use crate::extract::BucketAuth;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateBucketForm {
     pub email: String,
     pub secret_key: Option<String>,
@@ -24,13 +25,19 @@ pub struct CreateBucketForm {
     pub default_ttl: Option<u64>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdatePolicyForm {
     pub secret_key: Option<String>,
     pub read_key: Option<String>,
     pub write_key: Option<String>,
     pub signing_key: Option<String>,
     pub default_ttl: Option<u64>,
+}
+
+/// JSON shape returned by [`list_bucket`].
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ListBucketResponse {
+    pub keys: Vec<String>,
 }
 
 fn none_if_empty(s: Option<String>) -> Option<String> {
@@ -56,6 +63,21 @@ fn recompute_anonymous_access(policy: &BucketPolicy) -> Permission {
     }
 }
 
+#[utoipa::path(
+    post,
+    path = "/",
+    request_body(
+        content(
+            (CreateBucketForm = "application/x-www-form-urlencoded"),
+        ),
+    ),
+    responses(
+        (status = 200, description = "New bucket id as UTF-8 text (text/plain)"),
+        (status = 400, description = "Bad request", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "buckets"
+)]
 #[instrument(skip_all, name = "buckets::create_bucket")]
 pub async fn create_bucket(
     State(state): State<AppState>,
@@ -122,15 +144,51 @@ pub async fn create_bucket(
     ))
 }
 
+#[utoipa::path(
+    get,
+    path = "/{bucket}/",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+    ),
+    responses(
+        (status = 200, description = "Key listing", body = ListBucketResponse),
+        (status = 400, description = "Bad request", body = crate::error::ErrorBody),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorBody),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
+        (status = 404, description = "Bucket not found", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "buckets"
+)]
 #[instrument(skip_all, name = "buckets::list_bucket")]
 pub async fn list_bucket(
     State(_state): State<AppState>,
     auth: BucketAuth,
-) -> Result<axum::Json<serde_json::Value>, Response> {
+) -> Result<axum::Json<ListBucketResponse>, Response> {
     auth.require_enumerate()?;
-    Ok(axum::Json(serde_json::json!({ "keys": [] })))
+    Ok(axum::Json(ListBucketResponse { keys: vec![] }))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/{bucket}",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+    ),
+    request_body(
+        content(
+            (UpdatePolicyForm = "application/x-www-form-urlencoded"),
+        ),
+    ),
+    responses(
+        (status = 204, description = "Policy updated"),
+        (status = 400, description = "Bad request", body = crate::error::ErrorBody),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
+        (status = 404, description = "Bucket not found", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "buckets"
+)]
 #[instrument(skip_all, name = "buckets::update_policy")]
 pub async fn update_policy(
     State(state): State<AppState>,
@@ -181,6 +239,20 @@ pub async fn update_policy(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[utoipa::path(
+    delete,
+    path = "/{bucket}",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+    ),
+    responses(
+        (status = 204, description = "Bucket deleted"),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
+        (status = 404, description = "Bucket not found", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "buckets"
+)]
 #[instrument(skip_all, name = "buckets::delete_bucket")]
 pub async fn delete_bucket(
     State(state): State<AppState>,
@@ -195,3 +267,18 @@ pub async fn delete_bucket(
 
     Ok(StatusCode::NO_CONTENT)
 }
+
+/// OpenAPI-only stub: `GET /{bucket}` is wired in the HTTP router and returns 501 until M5.
+#[utoipa::path(
+    get,
+    path = "/{bucket}",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+    ),
+    responses(
+        (status = 501, description = "Not implemented", body = crate::error::ErrorBody),
+    ),
+    tag = "buckets"
+)]
+#[allow(dead_code)]
+pub fn get_bucket_reserved_openapi() {}
