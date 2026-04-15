@@ -1310,6 +1310,7 @@ dependencies = [
  "fjall",
  "keydock-domain",
  "keydock-usecase",
+ "metrics",
  "postcard",
  "pretty_assertions",
  "secrecy",

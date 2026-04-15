@@ -78,6 +78,9 @@ pub struct Config {
     /// Background garbage collection (expired keys in the `data` keyspace).
     #[serde(default)]
     pub gc: GcConfig,
+    /// HTTP rate limiting (fixed window per client IP).
+    #[serde(default)]
+    pub rate_limit: RateLimitConfig,
 }
 
 impl std::fmt::Debug for Config {
@@ -88,6 +91,7 @@ impl std::fmt::Debug for Config {
             .field("log_json", &self.log_json)
             .field("root_key", &"[REDACTED]")
             .field("gc", &self.gc)
+            .field("rate_limit", &self.rate_limit)
             .finish()
     }
 }
@@ -128,6 +132,28 @@ impl Default for GcConfig {
     }
 }
 
+/// Fixed-window rate limiting per client IP (HTTP edge).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RateLimitConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default = "default_requests_per_hour")]
+    pub requests_per_hour: u64,
+}
+
+fn default_requests_per_hour() -> u64 {
+    1000
+}
+
+impl Default for RateLimitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            requests_per_hour: default_requests_per_hour(),
+        }
+    }
+}
+
 fn default_listen() -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], 8080))
 }
@@ -145,6 +171,7 @@ impl Default for Config {
             log_json: false,
             root_key: default_root_key(),
             gc: GcConfig::default(),
+            rate_limit: RateLimitConfig::default(),
         }
     }
 }
@@ -222,6 +249,7 @@ pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, In
         log_json: false,
         root_key: default_root_key(),
         gc: GcConfig::default(),
+        rate_limit: RateLimitConfig::default(),
     };
 
     let toml_str = toml::to_string_pretty(&config)?;
@@ -341,6 +369,8 @@ mod tests {
             instance.join("data").canonicalize().unwrap()
         );
         assert_eq!(loaded.gc.interval_secs, 60);
+        assert_eq!(loaded.rate_limit.enabled, false);
+        assert_eq!(loaded.rate_limit.requests_per_hour, 1000);
     }
 
     #[test]

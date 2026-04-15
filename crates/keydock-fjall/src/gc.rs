@@ -94,6 +94,7 @@ fn sweep_keyspace(data: &Arc<Keyspace>) {
 
     let elapsed_ms = started.elapsed().as_millis() as u64;
     if keys_removed > 0 {
+        metrics::counter!("gc_keys_expired_total").increment(keys_removed);
         tracing::info!(
             keys_scanned,
             keys_removed,
