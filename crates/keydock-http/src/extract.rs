@@ -5,13 +5,21 @@ use std::fmt;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::response::Response;
+use bytes::Bytes;
 use keydock_domain::{BucketId, Key, Permission};
 use keydock_state::AppState;
 use keydock_usecase::{ResolvedIdentity, resolve};
+use percent_encoding::percent_decode_str;
 use tracing::instrument;
 
 use crate::auth::{RawCredential, extract as extract_credential};
 use crate::error::{bad_request, forbidden, map_use_case_repo_err, not_found, unauthorized};
+
+/// Parses a percent-encoded path segment or JSON key string into a validated [`Key`].
+pub(crate) fn parse_percent_encoded_key(raw: &str) -> Result<Key, Response> {
+    let decoded: Vec<u8> = percent_decode_str(raw).collect();
+    Key::from_bytes(Bytes::from(decoded)).map_err(|_| bad_request())
+}
 
 /// Which API key hashes are configured for the bucket (no secret material).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

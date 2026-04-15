@@ -3,23 +3,16 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use bytes::Bytes;
 use keydock_domain::CounterOp;
-use keydock_domain::Key;
 use keydock_domain::StoredValue;
 use keydock_domain::value::ValueKind;
 use keydock_state::AppState;
 use keydock_usecase::KeyService;
-use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use tracing::{debug, instrument};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::error::{bad_request, map_use_case_repo_err};
-use crate::extract::BucketAuth;
-
-fn parse_key(key: &str) -> Result<Key, Response> {
-    let decoded: Vec<u8> = percent_decode_str(key).collect();
-    Key::from_bytes(Bytes::from(decoded)).map_err(|_| bad_request())
-}
+use crate::extract::{BucketAuth, parse_percent_encoded_key};
 
 fn content_type_for_kind(kind: ValueKind) -> &'static str {
     match kind {
@@ -83,7 +76,7 @@ pub async fn get_key(
     auth: BucketAuth,
     Path((_bucket, key)): Path<(String, String)>,
 ) -> Result<Response, Response> {
-    let key_dom = parse_key(&key)?;
+    let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_read_on(&key_dom)?;
     let entry = KeyService::get(
         state.keys().as_ref(),
@@ -132,7 +125,7 @@ pub async fn put_key(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Response> {
-    let key_dom = parse_key(&key)?;
+    let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_write_on(&key_dom)?;
     let content_type = parse_content_type_header(&headers);
     let value = KeyService::set(
@@ -180,7 +173,7 @@ pub async fn delete_key(
     auth: BucketAuth,
     Path((_bucket, key)): Path<(String, String)>,
 ) -> Result<Response, Response> {
-    let key_dom = parse_key(&key)?;
+    let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_delete_on(&key_dom)?;
     KeyService::delete(state.keys().as_ref(), &auth.bucket_id, &key_dom)
         .map_err(map_use_case_repo_err)?;
@@ -218,7 +211,7 @@ pub async fn patch_key(
     Query(params): Query<PatchKeyParams>,
     body: Bytes,
 ) -> Result<Response, Response> {
-    let key_dom = parse_key(&key)?;
+    let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_write_on(&key_dom)?;
     let op = CounterOp::parse(body.as_ref()).map_err(|_| bad_request())?;
     let value = KeyService::increment(

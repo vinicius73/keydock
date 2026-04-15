@@ -5,16 +5,7 @@ use bytes::Bytes;
 use serde_json::json;
 use tokio::time::{Duration, sleep};
 
-use keydock_testkit::{BucketSetup, TestContext, TokenSetup};
-
-fn err_json(code: u16, msg: &str) -> serde_json::Value {
-    json!({
-        "error": {
-            "code": code,
-            "message": msg
-        }
-    })
-}
+use keydock_testkit::{BucketSetup, TestContext, TokenSetup, api_error_body_json};
 
 #[tokio::test]
 async fn txn_empty_batch_returns_204() {
@@ -107,7 +98,7 @@ async fn txn_delete_removes_key() {
         .authorization_bearer("sec")
         .await;
     get.assert_status_not_found();
-    get.assert_json(&err_json(404, "not_found"));
+    get.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -149,7 +140,7 @@ async fn txn_set_and_delete_atomic() {
         .authorization_bearer("sec")
         .await;
     g2.assert_status_not_found();
-    g2.assert_json(&err_json(404, "not_found"));
+    g2.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -175,7 +166,7 @@ async fn txn_set_with_ttl_expires() {
         .authorization_bearer("r")
         .await;
     get.assert_status_not_found();
-    get.assert_json(&err_json(404, "not_found"));
+    get.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -193,7 +184,7 @@ async fn txn_invalid_key_too_long_returns_400() {
         }))
         .await;
     res.assert_status_bad_request();
-    res.assert_json(&err_json(400, "bad_request"));
+    res.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -210,7 +201,7 @@ async fn txn_set_missing_value_returns_400() {
         }))
         .await;
     res.assert_status_bad_request();
-    res.assert_json(&err_json(400, "bad_request"));
+    res.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -243,7 +234,7 @@ async fn txn_requires_write_for_set() {
         }))
         .await;
     res.assert_status_forbidden();
-    res.assert_json(&err_json(403, "forbidden"));
+    res.assert_json(&api_error_body_json(403, "forbidden"));
 }
 
 #[tokio::test]
@@ -260,7 +251,7 @@ async fn txn_requires_delete_permission() {
         }))
         .await;
     res.assert_status_forbidden();
-    res.assert_json(&err_json(403, "forbidden"));
+    res.assert_json(&api_error_body_json(403, "forbidden"));
 }
 
 #[tokio::test]
@@ -296,7 +287,7 @@ async fn txn_scoped_token_prefix_enforced_on_set() {
         }))
         .await;
     res.assert_status_forbidden();
-    res.assert_json(&err_json(403, "forbidden"));
+    res.assert_json(&api_error_body_json(403, "forbidden"));
 }
 
 #[tokio::test]
@@ -342,7 +333,7 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
         }))
         .await;
     res.assert_status_forbidden();
-    res.assert_json(&err_json(403, "forbidden"));
+    res.assert_json(&api_error_body_json(403, "forbidden"));
 
     let g_new = ctx
         .server
