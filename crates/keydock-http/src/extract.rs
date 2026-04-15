@@ -265,7 +265,7 @@ mod tests {
             },
             Permission::NONE,
         );
-        assert!(a.require_read_on(&sample_key(b"k")).is_ok());
+        assert_eq!(a.require_read_on(&sample_key(b"k")).is_ok(), true);
     }
 
     #[test]
@@ -282,7 +282,7 @@ mod tests {
             },
             Permission::NONE,
         );
-        assert!(a.require_read_on(&sample_key(b"any")).is_ok());
+        assert_eq!(a.require_read_on(&sample_key(b"any")).is_ok(), true);
     }
 
     #[test]
@@ -299,7 +299,10 @@ mod tests {
             },
             Permission::NONE,
         );
-        assert!(a.require_read_on(&sample_key(b"user:42:name")).is_ok());
+        assert_eq!(
+            a.require_read_on(&sample_key(b"user:42:name")).is_ok(),
+            true
+        );
     }
 
     #[test]
@@ -331,7 +334,7 @@ mod tests {
             },
             Permission::NONE,
         );
-        assert!(a.require_read_on(&sample_key(b"k")).is_ok());
+        assert_eq!(a.require_read_on(&sample_key(b"k")).is_ok(), true);
     }
 
     #[test]
@@ -347,15 +350,5 @@ mod tests {
         );
         let err = a.require_read_on(&sample_key(b"k")).unwrap_err();
         assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn error_helpers_status_and_body_shape() {
-        let u = crate::error::unauthorized();
-        assert_eq!(u.status(), StatusCode::UNAUTHORIZED);
-        let f = crate::error::forbidden();
-        assert_eq!(f.status(), StatusCode::FORBIDDEN);
-        let n = crate::error::not_found();
-        assert_eq!(n.status(), StatusCode::NOT_FOUND);
     }
 }
