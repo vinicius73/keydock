@@ -19,6 +19,26 @@ pub fn data_storage_key(bucket: &BucketId, key: &Key) -> Vec<u8> {
     out
 }
 
+/// Prefix for [`fjall::Keyspace::prefix`] scans: `{bucket_id}:` plus optional user-key prefix bytes.
+pub fn data_key_prefix(bucket: &BucketId, user_prefix: Option<&[u8]>) -> Vec<u8> {
+    let mut out =
+        Vec::with_capacity(bucket.as_str().len() + 1 + user_prefix.map(<[u8]>::len).unwrap_or(0));
+    out.extend_from_slice(bucket.as_str().as_bytes());
+    out.push(b':');
+    if let Some(p) = user_prefix {
+        out.extend_from_slice(p);
+    }
+    out
+}
+
+/// Parses the user [`Key`] from a full storage key given the bucket id.
+pub fn user_key_from_storage_key(storage_key: &[u8], bucket: &BucketId) -> Option<Key> {
+    let b = bucket.as_str().as_bytes();
+    let rest = storage_key.strip_prefix(b)?;
+    let rest = rest.strip_prefix(b":")?;
+    Key::from_bytes(Bytes::copy_from_slice(rest)).ok()
+}
+
 #[derive(Serialize, Deserialize)]
 struct EntryCodec {
     payload: Vec<u8>,
