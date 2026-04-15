@@ -21,6 +21,11 @@ use crate::repos::{
 /// Above this many keys after the expiry filter, reverse listing logs a memory warning (full prefix is materialized).
 const REVERSE_LIST_WARN_ENTRY_COUNT: usize = 50_000;
 
+fn record_storage_op<T>(op: &'static str, result: &Result<T, UseCaseError>) {
+    let label = if result.is_ok() { "ok" } else { "err" };
+    metrics::counter!("storage_ops_total", "op" => op, "result" => label).increment(1);
+}
+
 /// Owns the Fjall [`Database`] handle and keyspaces used by the product.
 #[derive(Clone)]
 pub struct FjallStore {
@@ -54,7 +59,12 @@ impl FjallStore {
 impl BucketRepository for FjallStore {
     #[instrument(skip_all, name = "FjallStore::ping_metadata")]
     fn ping_metadata(&self) -> Result<(), UseCaseError> {
-        Ok(())
+        let result = (|| -> Result<(), UseCaseError> {
+            self.meta.get(b"__ping__").map_err(FjallError::from)?;
+            Ok(())
+        })();
+        record_storage_op("ping_metadata", &result);
+        result
     }
 
     #[instrument(
@@ -104,15 +114,19 @@ impl KeyRepository for FjallStore {
         fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
     )]
     fn get(&self, bucket: &BucketId, key: &Key) -> Result<Option<StoredEntry>, UseCaseError> {
-        let k = data_storage_key(bucket, key);
-        match self.data.get(&k).map_err(FjallError::from)? {
-            None => Ok(None),
-            Some(v) => {
-                let bytes: &[u8] = v.as_ref();
-                let entry = decode_entry(bytes)?;
-                Ok(Some(entry))
+        let result = (|| -> Result<Option<StoredEntry>, UseCaseError> {
+            let k = data_storage_key(bucket, key);
+            match self.data.get(&k).map_err(FjallError::from)? {
+                None => Ok(None),
+                Some(v) => {
+                    let bytes: &[u8] = v.as_ref();
+                    let entry = decode_entry(bytes)?;
+                    Ok(Some(entry))
+                }
             }
-        }
+        })();
+        record_storage_op("get", &result);
+        result
     }
 
     #[instrument(
@@ -127,10 +141,14 @@ impl KeyRepository for FjallStore {
         value: StoredValue,
         expires_at: Option<OffsetDateTime>,
     ) -> Result<(), UseCaseError> {
-        let k = data_storage_key(bucket, key);
-        let bytes = encode_entry(&value, expires_at)?;
-        self.data.insert(&k, bytes).map_err(FjallError::from)?;
-        Ok(())
+        let result = (|| -> Result<(), UseCaseError> {
+            let k = data_storage_key(bucket, key);
+            let bytes = encode_entry(&value, expires_at)?;
+            self.data.insert(&k, bytes).map_err(FjallError::from)?;
+            Ok(())
+        })();
+        record_storage_op("set", &result);
+        result
     }
 
     #[instrument(
@@ -139,12 +157,16 @@ impl KeyRepository for FjallStore {
         fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
     )]
     fn delete(&self, bucket: &BucketId, key: &Key) -> Result<bool, UseCaseError> {
-        let k = data_storage_key(bucket, key);
-        let existed = self.data.contains_key(&k).map_err(FjallError::from)?;
-        if existed {
-            self.data.remove(&k).map_err(FjallError::from)?;
-        }
-        Ok(existed)
+        let result = (|| -> Result<bool, UseCaseError> {
+            let k = data_storage_key(bucket, key);
+            let existed = self.data.contains_key(&k).map_err(FjallError::from)?;
+            if existed {
+                self.data.remove(&k).map_err(FjallError::from)?;
+            }
+            Ok(existed)
+        })();
+        record_storage_op("delete", &result);
+        result
     }
 
     #[instrument(
@@ -153,6 +175,91 @@ impl KeyRepository for FjallStore {
         fields(bucket = %bucket.as_str())
     )]
     fn list(&self, bucket: &BucketId, opts: &ListOpts<'_>) -> Result<Vec<ListEntry>, UseCaseError> {
+        let result = self.list_inner(bucket, opts);
+        record_storage_op("list", &result);
+        result
+    }
+
+    #[instrument(
+        skip_all,
+        name = "FjallStore::increment",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
+    fn increment(
+        &self,
+        bucket: &BucketId,
+        key: &Key,
+        op: CounterOp,
+        expires_at: Option<OffsetDateTime>,
+    ) -> Result<StoredValue, UseCaseError> {
+        let result = (|| -> Result<StoredValue, UseCaseError> {
+            let _guard = self
+                .increment_lock
+                .lock()
+                .map_err(|_| UseCaseError::Storage("increment lock poisoned".into()))?;
+            let k = data_storage_key(bucket, key);
+            let now = OffsetDateTime::now_utc();
+            let current = match self.data.get(&k).map_err(FjallError::from)? {
+                None => CounterValue::Int(0),
+                Some(v) => {
+                    let entry = decode_entry(v.as_ref())?;
+                    if let Some(exp) = entry.expires_at
+                        && exp <= now
+                    {
+                        CounterValue::Int(0)
+                    } else {
+                        CounterValue::from_stored(&entry.value)?
+                    }
+                }
+            };
+            let merged = op.apply(current)?;
+            let stored = merged.into_stored()?;
+            let bytes = encode_entry(&stored, expires_at)?;
+            self.data.insert(&k, bytes).map_err(FjallError::from)?;
+            Ok(stored)
+        })();
+        record_storage_op("increment", &result);
+        result
+    }
+
+    #[instrument(skip_all, name = "FjallStore::apply_batch", fields(bucket = %bucket.as_str()))]
+    fn apply_batch(&self, bucket: &BucketId, ops: &[TxnOp]) -> Result<(), UseCaseError> {
+        let result = (|| -> Result<(), UseCaseError> {
+            if ops.is_empty() {
+                return Ok(());
+            }
+            let mut batch = self.db.batch();
+            for op in ops {
+                match op {
+                    TxnOp::Set {
+                        key,
+                        value,
+                        expires_at,
+                    } => {
+                        let storage_key = data_storage_key(bucket, key);
+                        let bytes = encode_entry(value, *expires_at)?;
+                        batch.insert(self.data.as_ref(), storage_key, bytes);
+                    }
+                    TxnOp::Delete { key } => {
+                        let storage_key = data_storage_key(bucket, key);
+                        batch.remove(self.data.as_ref(), storage_key);
+                    }
+                }
+            }
+            batch.commit().map_err(FjallError::from)?;
+            Ok(())
+        })();
+        record_storage_op("apply_batch", &result);
+        result
+    }
+}
+
+impl FjallStore {
+    fn list_inner(
+        &self,
+        bucket: &BucketId,
+        opts: &ListOpts<'_>,
+    ) -> Result<Vec<ListEntry>, UseCaseError> {
         if opts.limit == 0 {
             return Ok(vec![]);
         }
@@ -246,70 +353,5 @@ impl KeyRepository for FjallStore {
         }
 
         Ok(out)
-    }
-
-    #[instrument(
-        skip_all,
-        name = "FjallStore::increment",
-        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
-    )]
-    fn increment(
-        &self,
-        bucket: &BucketId,
-        key: &Key,
-        op: CounterOp,
-        expires_at: Option<OffsetDateTime>,
-    ) -> Result<StoredValue, UseCaseError> {
-        let _guard = self
-            .increment_lock
-            .lock()
-            .map_err(|_| UseCaseError::Storage("increment lock poisoned".into()))?;
-        let k = data_storage_key(bucket, key);
-        let now = OffsetDateTime::now_utc();
-        let current = match self.data.get(&k).map_err(FjallError::from)? {
-            None => CounterValue::Int(0),
-            Some(v) => {
-                let entry = decode_entry(v.as_ref())?;
-                if let Some(exp) = entry.expires_at
-                    && exp <= now
-                {
-                    CounterValue::Int(0)
-                } else {
-                    CounterValue::from_stored(&entry.value)?
-                }
-            }
-        };
-        let merged = op.apply(current)?;
-        let stored = merged.into_stored()?;
-        let bytes = encode_entry(&stored, expires_at)?;
-        self.data.insert(&k, bytes).map_err(FjallError::from)?;
-        Ok(stored)
-    }
-
-    #[instrument(skip_all, name = "FjallStore::apply_batch", fields(bucket = %bucket.as_str()))]
-    fn apply_batch(&self, bucket: &BucketId, ops: &[TxnOp]) -> Result<(), UseCaseError> {
-        if ops.is_empty() {
-            return Ok(());
-        }
-        let mut batch = self.db.batch();
-        for op in ops {
-            match op {
-                TxnOp::Set {
-                    key,
-                    value,
-                    expires_at,
-                } => {
-                    let storage_key = data_storage_key(bucket, key);
-                    let bytes = encode_entry(value, *expires_at)?;
-                    batch.insert(self.data.as_ref(), storage_key, bytes);
-                }
-                TxnOp::Delete { key } => {
-                    let storage_key = data_storage_key(bucket, key);
-                    batch.remove(self.data.as_ref(), storage_key);
-                }
-            }
-        }
-        batch.commit().map_err(FjallError::from)?;
-        Ok(())
     }
 }
