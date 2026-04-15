@@ -76,8 +76,13 @@ pub async fn get_key(
 ) -> Result<Response, Response> {
     let key_dom = parse_key(&key)?;
     auth.require_read_on(&key_dom)?;
-    let entry = KeyService::get(state.keys().as_ref(), &auth.bucket_id, &key_dom)
-        .map_err(map_use_case_repo_err)?;
+    let entry = KeyService::get(
+        state.keys().as_ref(),
+        state.clock().as_ref(),
+        &auth.bucket_id,
+        &key_dom,
+    )
+    .map_err(map_use_case_repo_err)?;
     stored_value_response(&entry.value)
 }
 
