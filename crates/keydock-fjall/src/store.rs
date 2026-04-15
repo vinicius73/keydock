@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
-use keydock_domain::BucketId;
+use keydock_domain::{BucketId, BucketPolicy};
 use keydock_usecase::{BucketRepository, KeyRepository, UseCaseError};
 
 use crate::FjallError;
@@ -29,6 +29,14 @@ impl FjallStore {
 impl BucketRepository for FjallStore {
     fn ping_metadata(&self) -> Result<(), UseCaseError> {
         Ok(())
+    }
+
+    fn get_policy(&self, _bucket: &BucketId) -> Result<Option<BucketPolicy>, UseCaseError> {
+        Err(UseCaseError::NotImplemented)
+    }
+
+    fn create_bucket(&self, _id: &BucketId, _policy: BucketPolicy) -> Result<(), UseCaseError> {
+        Err(UseCaseError::NotImplemented)
     }
 }
 

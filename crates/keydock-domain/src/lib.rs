@@ -17,7 +17,7 @@ pub use error::DomainError;
 pub use key::Key;
 pub use permission::Permission;
 pub use policy::BucketPolicy;
-pub use token::TemporaryTokenClaims;
+pub use token::{SigningKey, TemporaryTokenClaims};
 pub use ttl::Ttl;
 pub use txn::TransactionId;
 pub use value::StoredValue;

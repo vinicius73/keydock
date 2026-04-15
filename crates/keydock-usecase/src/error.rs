@@ -8,3 +8,29 @@ pub enum UseCaseError {
     #[error(transparent)]
     Domain(#[from] keydock_domain::DomainError),
 }
+
+/// Authentication resolution failure (caller maps to HTTP 401).
+#[derive(Debug, Error)]
+pub enum AuthError {
+    #[error("invalid credential")]
+    InvalidCredential,
+}
+
+/// Temporary token mint or verify failure.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum TokenError {
+    #[error("invalid token format")]
+    InvalidFormat,
+    #[error("invalid signature")]
+    InvalidSignature,
+    #[error("token expired")]
+    Expired,
+    #[error("bucket mismatch")]
+    BucketMismatch,
+    #[error("generation mismatch")]
+    GenerationMismatch,
+    #[error("no signing key configured")]
+    NoSigningKey,
+    #[error("serialization failed")]
+    Serialize,
+}
