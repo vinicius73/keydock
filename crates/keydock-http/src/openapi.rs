@@ -1,7 +1,7 @@
 use utoipa::OpenApi;
 
 use crate::error::{ErrorBody, ErrorDetail};
-use crate::routes::buckets::{self, CreateBucketForm, ListBucketResponse, UpdatePolicyForm};
+use crate::routes::buckets::{self, CreateBucketForm, ListBucketParams, UpdatePolicyForm};
 use crate::routes::health::{self, HealthResponse};
 use crate::routes::keys::{self, PutKeyParams};
 use crate::routes::tokens::{self, AccessTokenResponse, CreateTokenForm};
@@ -28,7 +28,7 @@ use crate::routes::tokens::{self, AccessTokenResponse, CreateTokenForm};
         PutKeyParams,
         CreateBucketForm,
         UpdatePolicyForm,
-        ListBucketResponse,
+        ListBucketParams,
         CreateTokenForm,
         AccessTokenResponse,
     ))
