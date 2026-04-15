@@ -5,11 +5,12 @@ use keydock_domain::value::ValueKind;
 use keydock_domain::{BucketId, Key, StoredValue};
 use keydock_support::Clock;
 use time::{Duration, OffsetDateTime};
+use tracing::instrument;
 
 use crate::UseCaseError;
 use crate::ports::KeyRepository;
 
-/// Stored key payload plus optional expiry metadata (enforcement is M2).
+/// Stored key payload plus optional expiry metadata (`KeyService::get` treats expired entries as missing).
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredEntry {
     pub value: StoredValue,
@@ -20,12 +21,24 @@ pub struct StoredEntry {
 pub struct KeyService;
 
 impl KeyService {
+    #[instrument(
+        skip_all,
+        name = "KeyService::get",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
     pub fn get(
         repo: &dyn KeyRepository,
+        clock: &dyn Clock,
         bucket: &BucketId,
         key: &Key,
     ) -> Result<StoredEntry, UseCaseError> {
-        repo.get(bucket, key)?.ok_or(UseCaseError::NotFound)
+        let entry = repo.get(bucket, key)?.ok_or(UseCaseError::NotFound)?;
+        if let Some(exp) = entry.expires_at
+            && exp <= clock.now_utc()
+        {
+            return Err(UseCaseError::NotFound);
+        }
+        Ok(entry)
     }
 
     /// Maps HTTP write inputs (body, `Content-Type`, TTL) to storage; kept explicit for reviewability.
@@ -99,6 +112,16 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+
+    /// Fixed instant for deterministic TTL tests.
+    #[derive(Clone, Copy)]
+    struct MockClock(OffsetDateTime);
+
+    impl Clock for MockClock {
+        fn now_utc(&self) -> OffsetDateTime {
+            self.0
+        }
+    }
 
     struct MockRepo {
         last_expires: std::sync::Mutex<Option<Option<OffsetDateTime>>>,
@@ -192,5 +215,78 @@ mod tests {
         assert_eq!(v.kind, ValueKind::Int64);
         let exp = (*repo.last_expires.lock().expect("lock")).expect("set called");
         assert!(exp.is_some());
+    }
+
+    /// Returns a fixed entry from `get` for TTL enforcement tests.
+    struct RepoWithEntry {
+        entry: Option<StoredEntry>,
+    }
+
+    impl KeyRepository for RepoWithEntry {
+        fn get(&self, _bucket: &BucketId, _key: &Key) -> Result<Option<StoredEntry>, UseCaseError> {
+            Ok(self.entry.clone())
+        }
+
+        fn set(
+            &self,
+            _bucket: &BucketId,
+            _key: &Key,
+            _value: StoredValue,
+            _expires_at: Option<OffsetDateTime>,
+        ) -> Result<(), UseCaseError> {
+            Ok(())
+        }
+
+        fn delete(&self, _bucket: &BucketId, _key: &Key) -> Result<bool, UseCaseError> {
+            Ok(false)
+        }
+    }
+
+    fn sample_entry(expires_at: Option<OffsetDateTime>) -> StoredEntry {
+        StoredEntry {
+            value: StoredValue::new(Bytes::from_static(b"x"), ValueKind::Utf8).expect("value"),
+            expires_at,
+        }
+    }
+
+    #[test]
+    fn get_expired_entry_returns_not_found() {
+        let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("ts");
+        let clock = MockClock(now);
+        let repo = RepoWithEntry {
+            entry: Some(sample_entry(Some(now - Duration::seconds(1)))),
+        };
+        let bid = bucket();
+        let k = key();
+        let err = KeyService::get(&repo, &clock, &bid, &k).expect_err("expired");
+        assert_eq!(matches!(err, UseCaseError::NotFound), true);
+    }
+
+    #[test]
+    fn get_future_expiry_returns_entry() {
+        let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("ts");
+        let clock = MockClock(now);
+        let entry = sample_entry(Some(now + Duration::seconds(60)));
+        let repo = RepoWithEntry {
+            entry: Some(entry.clone()),
+        };
+        let bid = bucket();
+        let k = key();
+        let got = KeyService::get(&repo, &clock, &bid, &k).expect("get");
+        assert_eq!(got, entry);
+    }
+
+    #[test]
+    fn get_no_expiry_returns_entry() {
+        let now = OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("ts");
+        let clock = MockClock(now);
+        let entry = sample_entry(None);
+        let repo = RepoWithEntry {
+            entry: Some(entry.clone()),
+        };
+        let bid = bucket();
+        let k = key();
+        let got = KeyService::get(&repo, &clock, &bid, &k).expect("get");
+        assert_eq!(got, entry);
     }
 }
