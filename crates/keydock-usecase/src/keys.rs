@@ -204,7 +204,9 @@ fn infer_value_kind(body: &[u8], content_type: Option<&str>) -> ValueKind {
         if t.parse::<i64>().is_ok() {
             return ValueKind::Int64;
         }
-        if t.parse::<f64>().is_ok() {
+        if let Ok(f) = t.parse::<f64>()
+            && f.is_finite()
+        {
             return ValueKind::Float64;
         }
         if serde_json::from_str::<serde_json::Value>(t).is_ok() {
@@ -308,6 +310,7 @@ mod tests {
         ValueKind::Json
     )]
     #[case(b"true", None, ValueKind::Json)]
+    #[case(b"inf", None, ValueKind::Utf8)]
     #[case(b"", None, ValueKind::Utf8)]
     #[case(b"\xff\xfe", None, ValueKind::Raw)]
     fn infer_value_kind_cases(

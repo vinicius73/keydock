@@ -1,6 +1,7 @@
 //! Multi-key transaction orchestration.
 
 use keydock_domain::BucketId;
+use tracing::instrument;
 
 use crate::UseCaseError;
 use crate::ports::{KeyRepository, TxnOp};
@@ -10,6 +11,11 @@ pub struct TxnService;
 
 impl TxnService {
     /// Persists all operations in one atomic batch.
+    #[instrument(
+        skip_all,
+        name = "TxnService::execute",
+        fields(bucket = %bucket.as_str(), op_count = ops.len())
+    )]
     pub fn execute(
         repo: &dyn KeyRepository,
         bucket: &BucketId,

@@ -8,6 +8,7 @@ use bytes::Bytes;
 use keydock_domain::Key;
 use keydock_state::AppState;
 use keydock_usecase::{KeyService, TxnOp, TxnService};
+use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use tracing::instrument;
 use utoipa::ToSchema;
@@ -41,7 +42,8 @@ pub struct TxnRequest {
 }
 
 fn parse_txn_key(raw: &str) -> Result<Key, Response> {
-    Key::from_bytes(Bytes::copy_from_slice(raw.as_bytes())).map_err(|_| bad_request())
+    let decoded: Vec<u8> = percent_decode_str(raw).collect();
+    Key::from_bytes(Bytes::from(decoded)).map_err(|_| bad_request())
 }
 
 #[instrument(skip_all, name = "txn::execute_txn")]
