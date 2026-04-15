@@ -1,1 +1,361 @@
-//! Custom Axum extractors.
+//! Bucket-scoped authentication extractor (`FromRequestParts`).
+
+use std::fmt;
+
+use axum::extract::FromRequestParts;
+use axum::http::request::Parts;
+use axum::response::Response;
+use keydock_domain::{BucketId, Key, Permission};
+use keydock_state::AppState;
+use keydock_usecase::{ResolvedIdentity, UseCaseError, resolve};
+
+use crate::auth::{RawCredential, extract as extract_credential};
+use crate::error::{bad_request, forbidden, internal_error, not_found, unauthorized};
+
+/// Which API key hashes are configured for the bucket (no secret material).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PolicyKeysPresence {
+    pub has_read_key: bool,
+    pub has_write_key: bool,
+    pub has_secret_key: bool,
+}
+
+fn policy_keys_presence(policy: &keydock_domain::BucketPolicy) -> PolicyKeysPresence {
+    PolicyKeysPresence {
+        has_read_key: policy.read_key_hash.is_some(),
+        has_write_key: policy.write_key_hash.is_some(),
+        has_secret_key: policy.secret_key_hash.is_some(),
+    }
+}
+
+/// Resolved bucket identity and policy metadata for handler permission checks.
+#[derive(Clone)]
+pub struct BucketAuth {
+    pub identity: ResolvedIdentity,
+    pub bucket_id: BucketId,
+    pub policy_presence: PolicyKeysPresence,
+    pub anonymous_access: Permission,
+}
+
+impl fmt::Debug for BucketAuth {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("BucketAuth")
+            .field("identity", &"[redacted]")
+            .field("bucket_id", &self.bucket_id)
+            .field("policy_presence", &self.policy_presence)
+            .field("anonymous_access", &self.anonymous_access)
+            .finish()
+    }
+}
+
+impl BucketAuth {
+    pub fn require_admin(&self) -> Result<(), Response> {
+        match &self.identity {
+            ResolvedIdentity::Admin => Ok(()),
+            _ => Err(forbidden()),
+        }
+    }
+
+    pub fn require_enumerate(&self) -> Result<(), Response> {
+        match &self.identity {
+            ResolvedIdentity::Admin => Ok(()),
+            ResolvedIdentity::Scoped { permissions, .. } => {
+                if permissions.enumerate {
+                    Ok(())
+                } else {
+                    Err(forbidden())
+                }
+            }
+            ResolvedIdentity::Anonymous => {
+                if self.policy_presence.has_read_key {
+                    Err(unauthorized())
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    pub fn require_read_on(&self, key: &Key) -> Result<(), Response> {
+        match &self.identity {
+            ResolvedIdentity::Admin => Ok(()),
+            ResolvedIdentity::Scoped {
+                permissions,
+                key_prefix,
+            } => {
+                if !permissions.read {
+                    return Err(forbidden());
+                }
+                Self::enforce_prefix(key_prefix, Some(key))?;
+                Ok(())
+            }
+            ResolvedIdentity::Anonymous => {
+                if self.policy_presence.has_read_key {
+                    Err(unauthorized())
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    pub fn require_write_on(&self, key: &Key) -> Result<(), Response> {
+        match &self.identity {
+            ResolvedIdentity::Admin => Ok(()),
+            ResolvedIdentity::Scoped {
+                permissions,
+                key_prefix,
+            } => {
+                if !permissions.write {
+                    return Err(forbidden());
+                }
+                Self::enforce_prefix(key_prefix, Some(key))?;
+                Ok(())
+            }
+            ResolvedIdentity::Anonymous => {
+                if self.policy_presence.has_write_key {
+                    Err(unauthorized())
+                } else if self.anonymous_access.write {
+                    Ok(())
+                } else {
+                    Err(forbidden())
+                }
+            }
+        }
+    }
+
+    pub fn require_delete_on(&self, key: &Key) -> Result<(), Response> {
+        match &self.identity {
+            ResolvedIdentity::Admin => Ok(()),
+            ResolvedIdentity::Scoped {
+                permissions,
+                key_prefix,
+            } => {
+                if !permissions.delete {
+                    return Err(forbidden());
+                }
+                Self::enforce_prefix(key_prefix, Some(key))?;
+                Ok(())
+            }
+            ResolvedIdentity::Anonymous => {
+                if self.any_policy_key_present() {
+                    Err(unauthorized())
+                } else if self.anonymous_access.delete {
+                    Ok(())
+                } else {
+                    Err(forbidden())
+                }
+            }
+        }
+    }
+
+    fn any_policy_key_present(&self) -> bool {
+        self.policy_presence.has_secret_key
+            || self.policy_presence.has_write_key
+            || self.policy_presence.has_read_key
+    }
+
+    fn enforce_prefix(key_prefix: &[u8], key: Option<&Key>) -> Result<(), Response> {
+        if key_prefix.is_empty() {
+            return Ok(());
+        }
+        let Some(key) = key else {
+            return Ok(());
+        };
+        if key.as_bytes().starts_with(key_prefix) {
+            Ok(())
+        } else {
+            Err(forbidden())
+        }
+    }
+}
+
+fn first_path_segment(path: &str) -> Option<&str> {
+    path.trim_start_matches('/')
+        .split('/')
+        .find(|segment| !segment.is_empty())
+}
+
+fn bucket_id_from_path(path: &str) -> Result<BucketId, ()> {
+    let segment = first_path_segment(path).ok_or(())?;
+    BucketId::new(segment.to_string()).map_err(|_| ())
+}
+
+fn map_repo_err(err: UseCaseError) -> Response {
+    match err {
+        UseCaseError::Storage(msg) => {
+            tracing::error!(error = %msg, "bucket repository error");
+            internal_error()
+        }
+        other => {
+            tracing::error!(?other, "bucket repository error");
+            internal_error()
+        }
+    }
+}
+
+impl FromRequestParts<AppState> for BucketAuth {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let path = parts.uri.path();
+        let bucket_id = bucket_id_from_path(path).map_err(|()| bad_request())?;
+
+        let raw = extract_credential(&parts.headers, parts.uri.query());
+        let cred_ref = raw.as_ref().map(RawCredential::as_str);
+
+        let now = state.clock.now_utc();
+        let policy = match state.buckets.get_policy(&bucket_id) {
+            Ok(Some(p)) => p,
+            Ok(None) => return Err(not_found()),
+            Err(e) => return Err(map_repo_err(e)),
+        };
+
+        let identity = match resolve(cred_ref, &policy, &bucket_id, &state.root_key, now) {
+            Ok(id) => id,
+            Err(_) => return Err(unauthorized()),
+        };
+
+        Ok(BucketAuth {
+            identity,
+            bucket_id,
+            policy_presence: policy_keys_presence(&policy),
+            anonymous_access: policy.anonymous_access,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::StatusCode;
+    use bytes::Bytes;
+    use keydock_domain::BucketId;
+
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    fn sample_key(name: &[u8]) -> Key {
+        Key::from_bytes(Bytes::copy_from_slice(name)).expect("key")
+    }
+
+    fn auth(
+        identity: ResolvedIdentity,
+        presence: PolicyKeysPresence,
+        anonymous: Permission,
+    ) -> BucketAuth {
+        BucketAuth {
+            identity,
+            bucket_id: BucketId::new("b".to_string()).expect("id"),
+            policy_presence: presence,
+            anonymous_access: anonymous,
+        }
+    }
+
+    #[test]
+    fn require_read_admin_ok() {
+        let a = auth(
+            ResolvedIdentity::Admin,
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: true,
+            },
+            Permission::NONE,
+        );
+        assert!(a.require_read_on(&sample_key(b"k")).is_ok());
+    }
+
+    #[test]
+    fn require_read_scoped_empty_prefix_ok() {
+        let a = auth(
+            ResolvedIdentity::Scoped {
+                permissions: Permission::READ_ONLY,
+                key_prefix: Vec::new(),
+            },
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        assert!(a.require_read_on(&sample_key(b"any")).is_ok());
+    }
+
+    #[test]
+    fn require_read_scoped_prefix_match_ok() {
+        let a = auth(
+            ResolvedIdentity::Scoped {
+                permissions: Permission::READ_ONLY,
+                key_prefix: b"user:42:".to_vec(),
+            },
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        assert!(a.require_read_on(&sample_key(b"user:42:name")).is_ok());
+    }
+
+    #[test]
+    fn require_read_scoped_prefix_mismatch_forbidden() {
+        let a = auth(
+            ResolvedIdentity::Scoped {
+                permissions: Permission::READ_ONLY,
+                key_prefix: b"user:42:".to_vec(),
+            },
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        let err = a.require_read_on(&sample_key(b"admin:config")).unwrap_err();
+        assert_eq!(err.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn require_read_anonymous_public_ok() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: false,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        assert!(a.require_read_on(&sample_key(b"k")).is_ok());
+    }
+
+    #[test]
+    fn require_read_anonymous_restricted_unauthorized() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        let err = a.require_read_on(&sample_key(b"k")).unwrap_err();
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn error_helpers_status_and_body_shape() {
+        let u = crate::error::unauthorized();
+        assert_eq!(u.status(), StatusCode::UNAUTHORIZED);
+        let f = crate::error::forbidden();
+        assert_eq!(f.status(), StatusCode::FORBIDDEN);
+        let n = crate::error::not_found();
+        assert_eq!(n.status(), StatusCode::NOT_FOUND);
+    }
+}

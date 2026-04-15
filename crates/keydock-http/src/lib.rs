@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+// `Result<T, Response>` is the standard Axum pattern for auth helpers; `Response` is large.
+#![allow(clippy::result_large_err)]
 
 //! HTTP edge: routing, DTOs, OpenAPI (no business rules).
 

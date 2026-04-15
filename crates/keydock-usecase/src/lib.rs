@@ -16,3 +16,4 @@ pub use auth::{ResolvedIdentity, hash_credential, resolve, verify_credential};
 pub use context::RequestContext;
 pub use error::{AuthError, TokenError, UseCaseError};
 pub use ports::{BucketRepository, KeyRepository};
+pub use tokens::mint;

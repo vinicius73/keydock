@@ -57,6 +57,13 @@ impl BucketRepository for FjallStore {
             .insert(key, bytes)
             .map_err(|e| UseCaseError::Storage(e.to_string()))
     }
+
+    fn delete_bucket(&self, id: &BucketId) -> Result<(), UseCaseError> {
+        let key = id.as_str().as_bytes();
+        self.meta
+            .remove(key)
+            .map_err(|e| UseCaseError::Storage(e.to_string()))
+    }
 }
 
 impl KeyRepository for FjallStore {
