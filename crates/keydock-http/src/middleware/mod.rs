@@ -1,4 +1,3 @@
-//! HTTP middleware (metrics, rate limiting).
+//! HTTP middleware (metrics).
 
 pub(crate) mod metrics;
-pub(crate) mod rate_limit;

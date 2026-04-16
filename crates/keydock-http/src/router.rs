@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::{
     Router,
     http::{HeaderValue, Method, header},
@@ -9,6 +7,8 @@ use axum::{
 use keydock_config::RateLimitConfig;
 use keydock_state::AppState;
 use metrics_exporter_prometheus::PrometheusHandle;
+use real::RealIpLayer;
+use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::instrument;
@@ -17,8 +17,10 @@ use utoipa_swagger_ui::SwaggerUi;
 
 use axum::middleware;
 
+use axum_governor::GovernorLayer;
+
 use crate::error::not_implemented;
-use crate::middleware::{metrics, rate_limit};
+use crate::middleware::metrics;
 use crate::openapi::ApiDoc;
 use crate::routes::{buckets, health, keys, tokens, txn};
 
@@ -35,7 +37,6 @@ pub fn build_router(
     prometheus: PrometheusHandle,
     rate_limit_cfg: RateLimitConfig,
 ) -> Router {
-    let rate_for_layer = Arc::new(rate_limit::RateLimitState::new(rate_limit_cfg));
     let prom = prometheus.clone();
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -49,7 +50,7 @@ pub fn build_router(
         ])
         .allow_headers(Any);
 
-    Router::new()
+    let ops_routes = Router::new()
         .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
         .route("/health", get(health::health_check))
         .route("/ready", get(health::readiness_check))
@@ -69,7 +70,9 @@ pub fn build_router(
                         .into_response()
                 }
             }),
-        )
+        );
+
+    let mut api_routes = Router::new()
         .route("/", post(buckets::create_bucket))
         .route("/{bucket}/tokens/", post(tokens::create_token))
         .route(
@@ -87,11 +90,19 @@ pub fn build_router(
                 .post(txn::execute_txn)
                 .patch(buckets::update_policy)
                 .delete(buckets::delete_bucket),
-        )
-        .layer(middleware::from_fn(move |req, next| {
-            let st = Arc::clone(&rate_for_layer);
-            async move { rate_limit::enforce_rate_limit(st, req, next).await }
-        }))
+        );
+
+    if rate_limit_cfg.enabled {
+        api_routes = api_routes.layer(
+            ServiceBuilder::new()
+                .layer(RealIpLayer::default())
+                .layer(GovernorLayer::default()),
+        );
+    }
+
+    Router::new()
+        .merge(ops_routes)
+        .merge(api_routes)
         .layer(middleware::from_fn(metrics::track_http_metrics))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
