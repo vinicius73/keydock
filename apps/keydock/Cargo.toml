@@ -16,6 +16,7 @@ keydock-config = { workspace = true }
 keydock-domain = { workspace = true }
 keydock-fjall = { workspace = true }
 keydock-http = { workspace = true }
+lazy-limit = "1"
 keydock-state = { workspace = true }
 keydock-support = { workspace = true }
 keydock-usecase = { workspace = true }

@@ -6,6 +6,7 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+axum-governor = "=1.0.3"
 axum = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
@@ -17,6 +18,7 @@ keydock-usecase = { workspace = true }
 metrics = { workspace = true }
 metrics-exporter-prometheus = { workspace = true }
 percent-encoding = { workspace = true }
+real = { version = "0.1", features = ["axum"] }
 secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

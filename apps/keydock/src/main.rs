@@ -89,6 +89,13 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let root_key = Arc::new(SigningKey::new(Box::new(config.root_key.expose_bytes())));
     let state = AppState::new(env!("CARGO_PKG_VERSION"), clock, buckets, keys, root_key);
 
+    if config.rate_limit.enabled {
+        let tokens = u32::try_from(config.rate_limit.requests_per_hour).unwrap_or(u32::MAX);
+        let rule = lazy_limit::RuleConfig::new(lazy_limit::Duration::hours(1), tokens);
+        let limiter_config = lazy_limit::LimiterConfig::new(rule);
+        lazy_limit::initialize_limiter(limiter_config).await;
+    }
+
     let router = build_router(state, prometheus, config.rate_limit.clone());
 
     let addr = config.http.listen;
