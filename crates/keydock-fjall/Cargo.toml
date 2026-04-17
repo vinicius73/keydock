@@ -21,6 +21,11 @@ tokio = { workspace = true, features = ["macros", "rt", "sync", "time"] }
 tokio-util = { workspace = true }
 tracing = { workspace = true }
 
+[features]
+# Exposes helpers for integration/e2e tests (`keydock-testkit`, workspace tests).
+# Never enable for production binaries.
+testkit = []
+
 [dev-dependencies]
 pretty_assertions = { workspace = true }
 tempfile = { workspace = true }

@@ -7,10 +7,12 @@
 pub mod auth;
 pub mod error;
 pub mod extract;
+pub mod metrics;
 pub(crate) mod middleware;
 pub mod openapi;
 pub mod router;
 pub mod routes;
 
+pub use metrics::describe_all;
 pub use router::build_router;
 pub use routes::health::HealthResponse;

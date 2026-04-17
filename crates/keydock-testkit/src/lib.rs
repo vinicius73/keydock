@@ -16,7 +16,7 @@ use tracing::instrument;
 pub use buckets::BucketSetup;
 pub use tokens::{PolicyPatch, TokenSetup};
 
-use keydock_domain::SigningKey;
+use keydock_domain::{BucketId, Key, SigningKey};
 use keydock_fjall::FjallStore;
 use keydock_http::build_router;
 use keydock_state::AppState;
@@ -36,6 +36,10 @@ enum TestKitError {
     Metrics(#[from] BuildError),
 }
 
+// The Prometheus recorder is a process-global singleton; attempting to
+// install it twice panics. Serialize initialization under `PROMETHEUS` so
+// concurrent tests share a single handle, and register metric descriptions
+// in the same critical section to keep them bound to that handle.
 fn prometheus_handle() -> Result<PrometheusHandle, TestKitError> {
     let mut guard = PROMETHEUS
         .lock()
@@ -44,6 +48,7 @@ fn prometheus_handle() -> Result<PrometheusHandle, TestKitError> {
         return Ok(handle.clone());
     }
     let handle = PrometheusBuilder::new().install_recorder()?;
+    keydock_http::describe_all();
     *guard = Some(handle.clone());
     Ok(handle)
 }
@@ -53,6 +58,7 @@ fn prometheus_handle() -> Result<PrometheusHandle, TestKitError> {
 /// The directory is dropped when `TestContext` is dropped.
 pub struct TestContext {
     _dir: tempfile::TempDir,
+    store: Arc<FjallStore>,
     pub server: axum_test::TestServer,
 }
 
@@ -63,7 +69,11 @@ impl TestContext {
     #[track_caller]
     pub fn new() -> Self {
         match build_test_app() {
-            Ok((dir, server)) => Self { _dir: dir, server },
+            Ok((dir, store, server)) => Self {
+                _dir: dir,
+                store,
+                server,
+            },
             Err(e) => panic!("failed to construct test app: {e}"),
         }
     }
@@ -71,6 +81,23 @@ impl TestContext {
     /// Creates a bucket via `POST /` and returns the bucket id (body text).
     pub async fn create_bucket(&self, setup: BucketSetup) -> String {
         buckets::create_bucket(&self.server, &setup).await
+    }
+
+    /// Scrapes `GET /metrics` through the live router, returning the body.
+    /// Exercises the full wiring (router → handler → recorder render) rather
+    /// than reaching into the Prometheus handle directly.
+    pub async fn render_metrics(&self) -> String {
+        self.server.get("/metrics").await.text()
+    }
+
+    /// Overwrites the entry at `(bucket, key)` with bytes that fail `postcard`
+    /// decoding. The next read triggers `FjallError::Codec`, which the
+    /// metrics smoke test observes as
+    /// `storage_errors_total{kind="codec_entry"}`.
+    pub fn corrupt_entry(&self, bucket: &BucketId, key: &Key) {
+        self.store
+            .testkit_write_raw(bucket, key, &[0xFF, 0xFF, 0xFF, 0xFF])
+            .expect("inject corrupted entry bytes");
     }
 }
 
@@ -101,7 +128,8 @@ pub fn api_error_body_json(code: u16, message: &str) -> serde_json::Value {
 }
 
 #[instrument(skip_all)]
-fn build_test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKitError> {
+fn build_test_app()
+-> Result<(tempfile::TempDir, Arc<FjallStore>, axum_test::TestServer), TestKitError> {
     let dir = tempfile::tempdir()?;
     let store = Arc::new(FjallStore::open(dir.path())?);
     let buckets: Arc<dyn keydock_usecase::BucketRepository> = store.clone();
@@ -122,5 +150,5 @@ fn build_test_app() -> Result<(tempfile::TempDir, axum_test::TestServer), TestKi
     );
     let server = axum_test::TestServer::new(router);
 
-    Ok((dir, server))
+    Ok((dir, store, server))
 }

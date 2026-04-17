@@ -69,6 +69,7 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let prometheus = PrometheusBuilder::new()
         .install_recorder()
         .context("metrics recorder")?;
+    keydock_http::describe_all();
 
     std::fs::create_dir_all(&config.paths.data_dir)
         .with_context(|| format!("create data directory {}", config.paths.data_dir.display()))?;

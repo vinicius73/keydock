@@ -54,6 +54,29 @@ impl FjallStore {
     pub fn build_gc_sweeper(&self, interval: Duration) -> GcSweeper {
         GcSweeper::new(Arc::clone(&self.data), interval)
     }
+
+    /// Writes arbitrary bytes at the data-keyspace storage key for
+    /// `(bucket, key)`, bypassing the entry codec.
+    ///
+    /// Used by integration tests to simulate on-disk corruption and drive
+    /// `storage_errors_total{kind="codec_entry"}`. Feature-gated so this
+    /// surface is compiled out of production binaries.
+    #[cfg(any(test, feature = "testkit"))]
+    #[instrument(
+        skip_all,
+        name = "FjallStore::testkit_write_raw",
+        fields(bucket = %bucket.as_str(), key_len = key.as_bytes().len())
+    )]
+    pub fn testkit_write_raw(
+        &self,
+        bucket: &BucketId,
+        key: &Key,
+        raw: &[u8],
+    ) -> Result<(), FjallError> {
+        let storage_key = data_storage_key(bucket, key);
+        self.data.insert(&storage_key, raw)?;
+        Ok(())
+    }
 }
 
 impl BucketRepository for FjallStore {
@@ -196,7 +219,7 @@ impl KeyRepository for FjallStore {
             let _guard = self
                 .increment_lock
                 .lock()
-                .map_err(|_| UseCaseError::Storage("increment lock poisoned".into()))?;
+                .map_err(|_| FjallError::Adapter("increment lock poisoned".into()))?;
             let k = data_storage_key(bucket, key);
             let now = OffsetDateTime::now_utc();
             let current = match self.data.get(&k).map_err(FjallError::from)? {
