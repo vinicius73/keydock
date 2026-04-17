@@ -5,7 +5,7 @@ use crate::routes::buckets::{self, CreateBucketForm, ListBucketParams, UpdatePol
 use crate::routes::health::{self, HealthResponse};
 use crate::routes::keys::{self, TtlQuery};
 use crate::routes::tokens::{self, AccessTokenResponse, CreateTokenForm};
-use crate::routes::txn::{self, TxnCmd, TxnItem, TxnRequest};
+use crate::routes::txn::{self, TxnDelete, TxnItem, TxnRequest, TxnSet};
 
 #[derive(OpenApi)]
 #[openapi(
@@ -31,7 +31,8 @@ use crate::routes::txn::{self, TxnCmd, TxnItem, TxnRequest};
         TtlQuery,
         TxnRequest,
         TxnItem,
-        TxnCmd,
+        TxnSet,
+        TxnDelete,
         CreateBucketForm,
         UpdatePolicyForm,
         ListBucketParams,
