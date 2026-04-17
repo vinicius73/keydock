@@ -2,7 +2,8 @@
 
 use axum::http::header;
 use bytes::Bytes;
-use serde_json::json;
+use rstest::rstest;
+use serde_json::{Value, json};
 use tokio::time::{Duration, sleep};
 
 use keydock_testkit::{BucketSetup, TestContext, TokenSetup, api_error_body_json};
@@ -31,7 +32,7 @@ async fn txn_key_percent_decodes_like_path_keys() {
         .post(&format!("/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
-            "txn": [{ "cmd": "set", "key": "hello%20world", "value": "ok" }]
+            "txn": [{ "set": "hello%20world", "value": "ok" }]
         }))
         .await;
     res.assert_status_no_content();
@@ -55,7 +56,7 @@ async fn txn_set_creates_key() {
         .post(&format!("/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
-            "txn": [{ "cmd": "set", "key": "k", "value": "hello" }]
+            "txn": [{ "set": "k", "value": "hello" }]
         }))
         .await;
     res.assert_status_no_content();
@@ -87,7 +88,7 @@ async fn txn_delete_removes_key() {
         .post(&format!("/{bid}"))
         .authorization_bearer("sec")
         .json(&json!({
-            "txn": [{ "cmd": "delete", "key": "k" }]
+            "txn": [{ "delete": "k" }]
         }))
         .await;
     res.assert_status_no_content();
@@ -119,8 +120,8 @@ async fn txn_set_and_delete_atomic() {
         .authorization_bearer("sec")
         .json(&json!({
             "txn": [
-                { "cmd": "set", "key": "k1", "value": "a" },
-                { "cmd": "delete", "key": "k2" }
+                { "set": "k1", "value": "a" },
+                { "delete": "k2" }
             ]
         }))
         .await;
@@ -153,7 +154,7 @@ async fn txn_set_with_ttl_expires() {
         .post(&format!("/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
-            "txn": [{ "cmd": "set", "key": "kt", "value": "z", "ttl": 1 }]
+            "txn": [{ "set": "kt", "value": "z", "ttl": 1 }]
         }))
         .await;
     res.assert_status_no_content();
@@ -180,24 +181,7 @@ async fn txn_invalid_key_too_long_returns_400() {
         .post(&format!("/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
-            "txn": [{ "cmd": "set", "key": long_key, "value": "v" }]
-        }))
-        .await;
-    res.assert_status_bad_request();
-    res.assert_json(&api_error_body_json(400, "bad_request"));
-}
-
-#[tokio::test]
-async fn txn_set_missing_value_returns_400() {
-    let ctx = TestContext::new();
-    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-
-    let res = ctx
-        .server
-        .post(&format!("/{bid}"))
-        .authorization_bearer("w")
-        .json(&json!({
-            "txn": [{ "cmd": "set", "key": "k" }]
+            "txn": [{ "set": long_key, "value": "v" }]
         }))
         .await;
     res.assert_status_bad_request();
@@ -217,7 +201,7 @@ async fn txn_malformed_json_is_rejected() {
         .bytes(Bytes::from("not-json"))
         .await;
     res.assert_status_bad_request();
-    res.assert_text_contains("Failed to parse the request body as JSON");
+    res.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -230,7 +214,7 @@ async fn txn_requires_write_for_set() {
         .post(&format!("/{bid}"))
         .authorization_bearer("r")
         .json(&json!({
-            "txn": [{ "cmd": "set", "key": "k", "value": "x" }]
+            "txn": [{ "set": "k", "value": "x" }]
         }))
         .await;
     res.assert_status_forbidden();
@@ -247,7 +231,7 @@ async fn txn_requires_delete_permission() {
         .post(&format!("/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
-            "txn": [{ "cmd": "delete", "key": "k" }]
+            "txn": [{ "delete": "k" }]
         }))
         .await;
     res.assert_status_forbidden();
@@ -283,7 +267,7 @@ async fn txn_scoped_token_prefix_enforced_on_set() {
         .post(&format!("/{bid}"))
         .authorization_bearer(token)
         .json(&json!({
-            "txn": [{ "cmd": "set", "key": "y:k", "value": "1" }]
+            "txn": [{ "set": "y:k", "value": "1" }]
         }))
         .await;
     res.assert_status_forbidden();
@@ -327,8 +311,8 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
         .authorization_bearer(token)
         .json(&json!({
             "txn": [
-                { "cmd": "set", "key": "newk", "value": "nv" },
-                { "cmd": "delete", "key": "seed" }
+                { "set": "newk", "value": "nv" },
+                { "delete": "seed" }
             ]
         }))
         .await;
@@ -349,4 +333,166 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
         .await;
     g_seed.assert_status_ok();
     g_seed.assert_text("orig");
+}
+
+/// JSON scalar values (`Number`, `Bool`) must be stored as `application/json`
+/// so the original JSON type survives round-trip, instead of being re-inferred
+/// as Int64/Float64 from the serialized bytes.
+#[rstest]
+#[case::integer(json!(42), "42")]
+#[case::float(json!(1.5), "1.5")]
+#[case::boolean(json!(true), "true")]
+#[tokio::test]
+async fn txn_set_value_json_scalar_becomes_json(#[case] value: Value, #[case] expected_body: &str) {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&json!({
+            "txn": [{ "set": "k", "value": value }]
+        }))
+        .await;
+    res.assert_status_no_content();
+
+    let get = ctx
+        .server
+        .get(&format!("/{bid}/k"))
+        .authorization_bearer("r")
+        .await;
+    get.assert_status_ok();
+    get.assert_header(header::CONTENT_TYPE, "application/json");
+    get.assert_text(expected_body);
+}
+
+#[tokio::test]
+async fn txn_set_value_object_becomes_json() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+    let payload = json!({ "a": 1, "b": "x" });
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&json!({
+            "txn": [{ "set": "o", "value": payload }]
+        }))
+        .await;
+    res.assert_status_no_content();
+
+    let get = ctx
+        .server
+        .get(&format!("/{bid}/o"))
+        .authorization_bearer("r")
+        .await;
+    get.assert_status_ok();
+    get.assert_header(header::CONTENT_TYPE, "application/json");
+    get.assert_json(&json!({ "a": 1, "b": "x" }));
+}
+
+#[tokio::test]
+async fn txn_set_value_array_becomes_json() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&json!({
+            "txn": [{ "set": "a", "value": [1, 2, 3] }]
+        }))
+        .await;
+    res.assert_status_no_content();
+
+    let get = ctx
+        .server
+        .get(&format!("/{bid}/a"))
+        .authorization_bearer("r")
+        .await;
+    get.assert_status_ok();
+    get.assert_header(header::CONTENT_TYPE, "application/json");
+    get.assert_json(&json!([1, 2, 3]));
+}
+
+/// Strings fall through to the default inference: non-numeric UTF-8 ends up as
+/// `text/plain; charset=utf-8` (ValueKind::Utf8).
+#[tokio::test]
+async fn txn_set_value_utf8_string_preserved() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&json!({
+            "txn": [{ "set": "s", "value": "olá" }]
+        }))
+        .await;
+    res.assert_status_no_content();
+
+    let get = ctx
+        .server
+        .get(&format!("/{bid}/s"))
+        .authorization_bearer("r")
+        .await;
+    get.assert_status_ok();
+    get.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
+    get.assert_text("olá");
+}
+
+/// A numeric *string* (JSON `"42"`) must not be promoted to JSON; it stays as
+/// a plain-text integer. Anchors the distinction against `json!(42)`.
+#[tokio::test]
+async fn txn_set_value_numeric_string_stays_plaintext() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&json!({
+            "txn": [{ "set": "n", "value": "42" }]
+        }))
+        .await;
+    res.assert_status_no_content();
+
+    let get = ctx
+        .server
+        .get(&format!("/{bid}/n"))
+        .authorization_bearer("r")
+        .await;
+    get.assert_status_ok();
+    get.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
+    get.assert_text("42");
+}
+
+/// Invalid item shapes must be rejected with the canonical 400 envelope
+/// before any mutation is attempted. Covers: explicit JSON `null` value,
+/// the legacy `cmd` shape, and ambiguous items carrying both `set` and
+/// `delete` keys.
+#[rstest]
+#[case::null_value(json!({"txn":[{"set":"k","value":null}]}))]
+#[case::missing_value(json!({"txn":[{"set":"k"}]}))]
+#[case::legacy_cmd_shape(json!({"txn":[{"cmd":"set","key":"k","value":"v"}]}))]
+#[case::both_set_and_delete(json!({"txn":[{"set":"a","delete":"b","value":"v"}]}))]
+#[case::unknown_extra_field(json!({"txn":[{"set":"k","value":"v","ttl":1,"extra":true}]}))]
+#[tokio::test]
+async fn txn_rejects_invalid_item_shapes(#[case] payload: Value) {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
+
+    let res = ctx
+        .server
+        .post(&format!("/{bid}"))
+        .authorization_bearer("w")
+        .json(&payload)
+        .await;
+    res.assert_status_bad_request();
+    res.assert_json(&api_error_body_json(400, "bad_request"));
 }
