@@ -8,5 +8,5 @@ pub mod config;
 pub use cli::{CliError, Command, InitArgs, ServeArgs, parse};
 pub use config::{
     CONFIG_FILENAME, Config, ConfigError, GcConfig, HttpConfig, InitError, LoadedSecret,
-    PathsConfig, RateLimitConfig, ValidatedHttpConfig, write_init_config,
+    PathsConfig, RateLimitConfig, write_init_config,
 };

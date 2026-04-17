@@ -28,7 +28,6 @@ pub struct TxnItem {
     pub cmd: TxnCmd,
     pub key: String,
     pub value: Option<String>,
-    #[serde(rename = "content_type")]
     pub content_type: Option<String>,
     pub ttl: Option<u64>,
 }

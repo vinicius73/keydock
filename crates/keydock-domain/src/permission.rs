@@ -14,6 +14,8 @@ impl Permission {
 
     pub const READ_ONLY: Self = Self::new(true, false, false, false);
 
+    pub const WRITE_ONLY: Self = Self::new(false, true, false, false);
+
     pub const ADMIN: Self = Self::new(true, true, true, true);
 
     /// Constructs permission flags for temporary tokens and anonymous bucket access.
@@ -24,6 +26,21 @@ impl Permission {
             write,
             enumerate,
             delete,
+        }
+    }
+
+    /// Derives anonymous-access flags from the presence of per-capability API key hashes.
+    ///
+    /// A capability is anonymously granted when the matching key is **absent** (no credential
+    /// is required to use it). `delete` additionally requires that no administrative key
+    /// (secret/read/write) is configured.
+    #[must_use]
+    pub const fn anonymous_from_keys(has_secret: bool, has_read: bool, has_write: bool) -> Self {
+        Self {
+            read: !has_read,
+            write: !has_write,
+            enumerate: !has_read,
+            delete: !has_secret && !has_read && !has_write,
         }
     }
 

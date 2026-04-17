@@ -284,25 +284,6 @@ pub fn write_init_config(instance_dir: &Path, force: bool) -> Result<PathBuf, In
     Ok(config_path)
 }
 
-/// HTTP-relevant, validated view of configuration (no secrets by default).
-#[derive(Debug, Clone)]
-pub struct ValidatedHttpConfig {
-    pub listen: SocketAddr,
-    pub metrics_listen: Option<SocketAddr>,
-    pub log_json: bool,
-}
-
-impl ValidatedHttpConfig {
-    #[instrument(skip_all, name = "ValidatedHttpConfig::from_config")]
-    pub fn from_config(cfg: &Config) -> Self {
-        Self {
-            listen: cfg.http.listen,
-            metrics_listen: cfg.http.metrics_listen,
-            log_json: cfg.log_json,
-        }
-    }
-}
-
 /// Secret string from config (never log; use [`LoadedSecret::expose_bytes`] only at startup).
 #[derive(Clone)]
 pub struct LoadedSecret(pub SecretString);

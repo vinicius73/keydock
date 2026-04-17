@@ -21,10 +21,6 @@ fn content_type_for_kind(kind: ValueKind) -> &'static str {
     }
 }
 
-fn parse_content_type_header(headers: &HeaderMap) -> Option<&str> {
-    headers.get(header::CONTENT_TYPE)?.to_str().ok()
-}
-
 fn stored_value_response(value: &StoredValue) -> Result<Response, Response> {
     let ct = content_type_for_kind(value.kind);
     let hv = HeaderValue::from_static(ct);
@@ -118,7 +114,9 @@ pub async fn put_key(
 ) -> Result<Response, Response> {
     let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_write_on(&key_dom)?;
-    let content_type = parse_content_type_header(&headers);
+    let content_type = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|h| h.to_str().ok());
     let value = KeyService::set(
         state.keys().as_ref(),
         state.clock().as_ref(),
