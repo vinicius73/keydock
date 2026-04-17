@@ -11,7 +11,7 @@ base64 = { workspace = true }
 bytes = { workspace = true }
 keydock-config = { workspace = true }
 keydock-domain = { workspace = true }
-keydock-fjall = { workspace = true }
+keydock-fjall = { workspace = true, features = ["testkit"] }
 keydock-http = { workspace = true }
 keydock-state = { workspace = true }
 keydock-support = { workspace = true }
