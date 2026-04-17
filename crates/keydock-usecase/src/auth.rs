@@ -62,12 +62,7 @@ pub fn resolve(
         && verify_credential(cred, h, root_key)
     {
         return Ok(ResolvedIdentity::Scoped {
-            permissions: Permission {
-                read: false,
-                write: true,
-                enumerate: false,
-                delete: false,
-            },
+            permissions: Permission::WRITE_ONLY,
             key_prefix: Vec::new(),
         });
     }
@@ -75,12 +70,7 @@ pub fn resolve(
         && verify_credential(cred, h, root_key)
     {
         return Ok(ResolvedIdentity::Scoped {
-            permissions: Permission {
-                read: true,
-                write: false,
-                enumerate: false,
-                delete: false,
-            },
+            permissions: Permission::READ_ONLY,
             key_prefix: Vec::new(),
         });
     }

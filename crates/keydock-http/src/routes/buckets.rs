@@ -74,15 +74,11 @@ fn hash_api_key_or_fail(root_key: &SigningKey, raw: &str) -> Result<Vec<u8>, Res
 }
 
 fn recompute_anonymous_access(policy: &BucketPolicy) -> Permission {
-    let has_s = policy.secret_key_hash.is_some();
-    let has_r = policy.read_key_hash.is_some();
-    let has_w = policy.write_key_hash.is_some();
-    Permission {
-        read: !has_r,
-        write: !has_w,
-        enumerate: !has_r,
-        delete: !has_s && !has_r && !has_w,
-    }
+    Permission::anonymous_from_keys(
+        policy.secret_key_hash.is_some(),
+        policy.read_key_hash.is_some(),
+        policy.write_key_hash.is_some(),
+    )
 }
 
 /// Intersects token scope prefix with optional `?prefix=` (incompatible combinations return `None`).
@@ -272,30 +268,21 @@ pub async fn create_bucket(
     let write_key = none_if_empty(form.write_key);
     let signing_key = none_if_empty(form.signing_key);
 
-    let has_s = secret_key.is_some();
-    let has_r = read_key.is_some();
-    let has_w = write_key.is_some();
-
-    let anonymous_access = Permission {
-        read: !has_r,
-        write: !has_w,
-        enumerate: !has_r,
-        delete: !has_s && !has_r && !has_w,
-    };
+    let anonymous_access = Permission::anonymous_from_keys(
+        secret_key.is_some(),
+        read_key.is_some(),
+        write_key.is_some(),
+    );
 
     let rk = state.root_key().as_ref();
-    let secret_key_hash = match secret_key.as_ref() {
-        Some(s) => Some(hash_api_key_or_fail(rk, s)?),
-        None => None,
+    let hash = |raw: &Option<String>| -> Result<Option<Vec<u8>>, Response> {
+        raw.as_deref()
+            .map(|s| hash_api_key_or_fail(rk, s))
+            .transpose()
     };
-    let read_key_hash = match read_key.as_ref() {
-        Some(s) => Some(hash_api_key_or_fail(rk, s)?),
-        None => None,
-    };
-    let write_key_hash = match write_key.as_ref() {
-        Some(s) => Some(hash_api_key_or_fail(rk, s)?),
-        None => None,
-    };
+    let secret_key_hash = hash(&secret_key)?;
+    let read_key_hash = hash(&read_key)?;
+    let write_key_hash = hash(&write_key)?;
 
     let policy = BucketPolicy {
         default_ttl_secs: form.default_ttl,
@@ -307,7 +294,8 @@ pub async fn create_bucket(
         signing_key_generation: 0,
     };
 
-    let id = BucketId::new(Uuid::new_v4().to_string()).map_err(|_| bad_request())?;
+    let id = BucketId::new(Uuid::new_v4().to_string())
+        .expect("Uuid::new_v4().to_string() is never empty; BucketId::new rejects only empty");
     state
         .buckets()
         .create_bucket(&id, policy)

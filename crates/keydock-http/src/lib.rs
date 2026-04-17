@@ -9,7 +9,6 @@ pub mod error;
 pub mod extract;
 pub(crate) mod middleware;
 pub mod openapi;
-pub mod response;
 pub mod router;
 pub mod routes;
 

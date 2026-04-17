@@ -5,36 +5,12 @@ use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tracing::instrument;
 
-#[derive(Debug, Serialize, Deserialize)]
-struct StoredPermission {
-    read: bool,
-    write: bool,
-    enumerate: bool,
-    delete: bool,
-}
-
-impl From<Permission> for StoredPermission {
-    fn from(p: Permission) -> Self {
-        Self {
-            read: p.read,
-            write: p.write,
-            enumerate: p.enumerate,
-            delete: p.delete,
-        }
-    }
-}
-
-impl From<StoredPermission> for Permission {
-    fn from(p: StoredPermission) -> Self {
-        Self {
-            read: p.read,
-            write: p.write,
-            enumerate: p.enumerate,
-            delete: p.delete,
-        }
-    }
-}
-
+// On-disk JSON mirror of [`BucketPolicy`]. Kept separate so we can:
+//   * strip the secret `SigningKey` wrapper to a raw byte sequence;
+//   * avoid coupling storage format to any future additions on `BucketPolicy`
+//     that shouldn't hit disk without an explicit opt-in.
+// Field names/order match `Permission` exactly so the embedded `anonymous_access`
+// round-trips as-is.
 #[derive(Debug, Serialize, Deserialize)]
 struct StoredBucketPolicy {
     secret_key_hash: Option<Vec<u8>>,
@@ -43,7 +19,7 @@ struct StoredBucketPolicy {
     signing_key: Option<Vec<u8>>,
     signing_key_generation: u64,
     default_ttl_secs: Option<u64>,
-    anonymous_access: StoredPermission,
+    anonymous_access: Permission,
 }
 
 impl From<&BucketPolicy> for StoredBucketPolicy {
@@ -55,7 +31,7 @@ impl From<&BucketPolicy> for StoredBucketPolicy {
             signing_key: p.signing_key.as_ref().map(|k| k.expose_secret().clone()),
             signing_key_generation: p.signing_key_generation,
             default_ttl_secs: p.default_ttl_secs,
-            anonymous_access: StoredPermission::from(p.anonymous_access),
+            anonymous_access: p.anonymous_access,
         }
     }
 }
@@ -64,7 +40,7 @@ impl From<StoredBucketPolicy> for BucketPolicy {
     fn from(s: StoredBucketPolicy) -> Self {
         Self {
             default_ttl_secs: s.default_ttl_secs,
-            anonymous_access: s.anonymous_access.into(),
+            anonymous_access: s.anonymous_access,
             secret_key_hash: s.secret_key_hash,
             read_key_hash: s.read_key_hash,
             write_key_hash: s.write_key_hash,
@@ -74,14 +50,12 @@ impl From<StoredBucketPolicy> for BucketPolicy {
     }
 }
 
-/// Encode policy to JSON bytes for storage.
 #[instrument(skip_all, name = "codec::encode_policy")]
 pub fn encode_policy(policy: &BucketPolicy) -> Result<Vec<u8>, CodecError> {
     let stored = StoredBucketPolicy::from(policy);
     Ok(serde_json::to_vec(&stored)?)
 }
 
-/// Decode policy from stored JSON bytes.
 #[instrument(skip_all, name = "codec::decode_policy")]
 pub fn decode_policy(bytes: &[u8]) -> Result<BucketPolicy, CodecError> {
     let stored: StoredBucketPolicy = serde_json::from_slice(bytes)?;

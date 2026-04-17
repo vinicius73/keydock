@@ -1,7 +1,6 @@
 #![forbid(unsafe_code)]
 
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -151,12 +150,6 @@ fn init_tracing(json: bool) -> anyhow::Result<()> {
         tracing_subscriber::fmt().with_env_filter(filter).try_init()
     };
     result.map_err(|e| anyhow::anyhow!("init tracing subscriber: {e}"))
-}
-
-/// For `--config` default when none is passed: optional `keydock.toml` in cwd.
-#[allow(dead_code)]
-fn default_config_path() -> impl AsRef<Path> {
-    Path::new("keydock.toml")
 }
 
 async fn shutdown_signal() {
