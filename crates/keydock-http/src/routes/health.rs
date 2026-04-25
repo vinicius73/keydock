@@ -39,8 +39,21 @@ pub async fn health_check(State(state): State<AppState>) -> Json<HealthResponse>
     )
 )]
 pub async fn readiness_check(State(state): State<AppState>) -> Response {
-    match state.buckets().ping_metadata() {
-        Ok(()) => (
+    let buckets = state.buckets().clone();
+    let ok = match tokio::task::spawn_blocking(move || buckets.ping_metadata()).await {
+        Ok(Ok(())) => true,
+        Ok(Err(e)) => {
+            tracing::debug!(error = %e, "readiness: storage ping failed");
+            false
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "readiness: spawn_blocking join failed");
+            false
+        }
+    };
+
+    match ok {
+        true => (
             StatusCode::OK,
             Json(HealthResponse {
                 status: "ok",
@@ -49,7 +62,7 @@ pub async fn readiness_check(State(state): State<AppState>) -> Response {
             }),
         )
             .into_response(),
-        Err(_) => (
+        false => (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(HealthResponse {
                 status: "degraded",

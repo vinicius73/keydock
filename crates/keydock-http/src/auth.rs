@@ -3,7 +3,6 @@
 use axum::http::{HeaderMap, header};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64_STD;
-use percent_encoding::percent_decode_str;
 use tracing::instrument;
 
 /// Raw credential material extracted from the wire (never logged).
@@ -89,7 +88,7 @@ fn extract_from_query(query: &str) -> Option<RawCredential> {
 }
 
 fn decode_query_value(value: &str) -> Option<String> {
-    let bytes = percent_decode_str(value).collect::<Vec<u8>>();
+    let bytes = crate::percent::decode_to_bytes(value);
     String::from_utf8(bytes).ok()
 }
 

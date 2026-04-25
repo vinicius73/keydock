@@ -10,7 +10,8 @@ use serde::Deserialize;
 use tracing::{debug, instrument};
 use utoipa::{IntoParams, ToSchema};
 
-use crate::error::{bad_request, map_use_case_repo_err};
+use crate::blocking;
+use crate::error::bad_request;
 use crate::extract::{BucketAuth, parse_percent_encoded_key};
 
 fn content_type_for_kind(kind: ValueKind) -> &'static str {
@@ -65,13 +66,14 @@ pub async fn get_key(
 ) -> Result<Response, Response> {
     let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_read_on(&key_dom)?;
-    let entry = KeyService::get(
-        state.keys().as_ref(),
-        state.clock().as_ref(),
-        &auth.bucket_id,
-        &key_dom,
-    )
-    .map_err(map_use_case_repo_err)?;
+    let keys = state.keys().clone();
+    let clock = state.clock().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let key_dom2 = key_dom.clone();
+    let entry = blocking::spawn_usecase(move || {
+        KeyService::get(keys.as_ref(), clock.as_ref(), &bucket_id, &key_dom2)
+    })
+    .await?;
     debug!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),
@@ -108,13 +110,14 @@ pub async fn head_key(
     // the only difference is that we drop the body on the way out.
     let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_read_on(&key_dom)?;
-    let entry = KeyService::get(
-        state.keys().as_ref(),
-        state.clock().as_ref(),
-        &auth.bucket_id,
-        &key_dom,
-    )
-    .map_err(map_use_case_repo_err)?;
+    let keys = state.keys().clone();
+    let clock = state.clock().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let key_dom2 = key_dom.clone();
+    let entry = blocking::spawn_usecase(move || {
+        KeyService::get(keys.as_ref(), clock.as_ref(), &bucket_id, &key_dom2)
+    })
+    .await?;
 
     let ct = content_type_for_kind(entry.value.kind);
     let hv = HeaderValue::from_static(ct);
@@ -156,18 +159,27 @@ pub async fn put_key(
     auth.require_write_on(&key_dom)?;
     let content_type = headers
         .get(header::CONTENT_TYPE)
-        .and_then(|h| h.to_str().ok());
-    let value = KeyService::set(
-        state.keys().as_ref(),
-        state.clock().as_ref(),
-        &auth.bucket_id,
-        &key_dom,
-        body,
-        content_type,
-        params.ttl,
-        auth.default_ttl_secs,
-    )
-    .map_err(map_use_case_repo_err)?;
+        .and_then(|h| h.to_str().ok())
+        .map(str::to_string);
+    let keys = state.keys().clone();
+    let clock = state.clock().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let key_dom2 = key_dom.clone();
+    let ttl = params.ttl;
+    let default_ttl = auth.default_ttl_secs;
+    let value = blocking::spawn_usecase(move || {
+        KeyService::set(
+            keys.as_ref(),
+            clock.as_ref(),
+            &bucket_id,
+            &key_dom2,
+            body,
+            content_type.as_deref(),
+            ttl,
+            default_ttl,
+        )
+    })
+    .await?;
     debug!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),
@@ -204,8 +216,11 @@ pub async fn delete_key(
 ) -> Result<Response, Response> {
     let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_delete_on(&key_dom)?;
-    KeyService::delete(state.keys().as_ref(), &auth.bucket_id, &key_dom)
-        .map_err(map_use_case_repo_err)?;
+    let keys = state.keys().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let key_dom2 = key_dom.clone();
+    blocking::spawn_usecase(move || KeyService::delete(keys.as_ref(), &bucket_id, &key_dom2))
+        .await?;
     debug!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),
@@ -243,16 +258,24 @@ pub async fn patch_key(
     let key_dom = parse_percent_encoded_key(&key)?;
     auth.require_write_on(&key_dom)?;
     let op = CounterOp::parse(body.as_ref()).map_err(|_| bad_request())?;
-    let value = KeyService::increment(
-        state.keys().as_ref(),
-        state.clock().as_ref(),
-        &auth.bucket_id,
-        &key_dom,
-        op,
-        params.ttl,
-        auth.default_ttl_secs,
-    )
-    .map_err(map_use_case_repo_err)?;
+    let keys = state.keys().clone();
+    let clock = state.clock().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let key_dom2 = key_dom.clone();
+    let ttl = params.ttl;
+    let default_ttl = auth.default_ttl_secs;
+    let value = blocking::spawn_usecase(move || {
+        KeyService::increment(
+            keys.as_ref(),
+            clock.as_ref(),
+            &bucket_id,
+            &key_dom2,
+            op,
+            ttl,
+            default_ttl,
+        )
+    })
+    .await?;
     debug!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),

@@ -9,7 +9,8 @@ use time::Duration;
 use tracing::instrument;
 use utoipa::ToSchema;
 
-use crate::error::{bad_request, map_use_case_repo_err, not_found, service_unavailable};
+use crate::blocking;
+use crate::error::{bad_request, not_found, service_unavailable};
 use crate::extract::BucketAuth;
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -73,10 +74,10 @@ pub async fn create_token(
 ) -> Result<axum::Json<AccessTokenResponse>, Response> {
     auth.require_admin()?;
 
-    let policy = state
-        .buckets()
-        .get_policy(&auth.bucket_id)
-        .map_err(map_use_case_repo_err)?
+    let buckets = state.buckets().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let policy = blocking::spawn_usecase(move || buckets.get_policy(&bucket_id))
+        .await?
         .ok_or_else(not_found)?;
 
     let signing_key = policy

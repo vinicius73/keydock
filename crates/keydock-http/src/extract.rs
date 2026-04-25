@@ -9,15 +9,15 @@ use bytes::Bytes;
 use keydock_domain::{BucketId, Key, Permission};
 use keydock_state::AppState;
 use keydock_usecase::{ResolvedIdentity, resolve};
-use percent_encoding::percent_decode_str;
 use tracing::instrument;
 
 use crate::auth::{RawCredential, extract as extract_credential};
-use crate::error::{bad_request, forbidden, map_use_case_repo_err, not_found, unauthorized};
+use crate::blocking;
+use crate::error::{bad_request, forbidden, not_found, unauthorized};
 
 /// Parses a percent-encoded path segment or JSON key string into a validated [`Key`].
 pub(crate) fn parse_percent_encoded_key(raw: &str) -> Result<Key, Response> {
-    let decoded: Vec<u8> = percent_decode_str(raw).collect();
+    let decoded: Vec<u8> = crate::percent::decode_to_bytes(raw);
     Key::from_bytes(Bytes::from(decoded)).map_err(|_| bad_request())
 }
 
@@ -29,11 +29,13 @@ pub struct PolicyKeysPresence {
     pub has_secret_key: bool,
 }
 
-fn policy_keys_presence(policy: &keydock_domain::BucketPolicy) -> PolicyKeysPresence {
-    PolicyKeysPresence {
-        has_read_key: policy.read_key_hash.is_some(),
-        has_write_key: policy.write_key_hash.is_some(),
-        has_secret_key: policy.secret_key_hash.is_some(),
+impl From<&keydock_domain::BucketPolicy> for PolicyKeysPresence {
+    fn from(policy: &keydock_domain::BucketPolicy) -> Self {
+        Self {
+            has_read_key: policy.read_key_hash.is_some(),
+            has_write_key: policy.write_key_hash.is_some(),
+            has_secret_key: policy.secret_key_hash.is_some(),
+        }
     }
 }
 
@@ -99,7 +101,7 @@ impl BucketAuth {
                 if !permissions.read {
                     return Err(forbidden());
                 }
-                Self::enforce_prefix(key_prefix, Some(key))?;
+                Self::enforce_prefix(key_prefix, key)?;
                 Ok(())
             }
             ResolvedIdentity::Anonymous => {
@@ -123,7 +125,7 @@ impl BucketAuth {
                 if !permissions.write {
                     return Err(forbidden());
                 }
-                Self::enforce_prefix(key_prefix, Some(key))?;
+                Self::enforce_prefix(key_prefix, key)?;
                 Ok(())
             }
             ResolvedIdentity::Anonymous => {
@@ -149,7 +151,7 @@ impl BucketAuth {
                 if !permissions.delete {
                     return Err(forbidden());
                 }
-                Self::enforce_prefix(key_prefix, Some(key))?;
+                Self::enforce_prefix(key_prefix, key)?;
                 Ok(())
             }
             ResolvedIdentity::Anonymous => {
@@ -170,13 +172,10 @@ impl BucketAuth {
             || self.policy_presence.has_read_key
     }
 
-    fn enforce_prefix(key_prefix: &[u8], key: Option<&Key>) -> Result<(), Response> {
+    fn enforce_prefix(key_prefix: &[u8], key: &Key) -> Result<(), Response> {
         if key_prefix.is_empty() {
             return Ok(());
         }
-        let Some(key) = key else {
-            return Ok(());
-        };
         if key.as_bytes().starts_with(key_prefix) {
             Ok(())
         } else {
@@ -216,11 +215,11 @@ impl FromRequestParts<AppState> for BucketAuth {
         let cred_ref = raw.as_ref().map(RawCredential::as_str);
 
         let now = state.clock().now_utc();
-        let policy = match state.buckets().get_policy(&bucket_id) {
-            Ok(Some(p)) => p,
-            Ok(None) => return Err(not_found()),
-            Err(e) => return Err(map_use_case_repo_err(e)),
-        };
+        let buckets = state.buckets().clone();
+        let bucket_id_for_policy = bucket_id.clone();
+        let policy = blocking::spawn_usecase(move || buckets.get_policy(&bucket_id_for_policy))
+            .await?
+            .ok_or_else(not_found)?;
 
         let identity = match resolve(
             cred_ref,
@@ -236,7 +235,7 @@ impl FromRequestParts<AppState> for BucketAuth {
         Ok(BucketAuth {
             identity,
             bucket_id,
-            policy_presence: policy_keys_presence(&policy),
+            policy_presence: PolicyKeysPresence::from(&policy),
             anonymous_access: policy.anonymous_access,
             default_ttl_secs: policy.default_ttl_secs,
         })
