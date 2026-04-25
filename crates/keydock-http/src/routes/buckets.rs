@@ -16,8 +16,9 @@ use tracing::{debug, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::error::{bad_request, internal_error, map_use_case_repo_err, not_acceptable, not_found};
-use crate::extract::BucketAuth;
+use crate::blocking;
+use crate::error::{bad_request, internal_error, not_acceptable, not_found};
+use crate::extract::{BucketAuth, PolicyKeysPresence};
 
 /// Hosted default TTL applied to buckets created without an explicit
 /// `default_ttl`: 7 days (604800 seconds).
@@ -67,11 +68,12 @@ pub struct BucketPolicyPublic {
 }
 
 fn public_policy_view(policy: &BucketPolicy) -> BucketPolicyPublic {
+    let presence = PolicyKeysPresence::from(policy);
     BucketPolicyPublic {
         default_ttl: policy.default_ttl_secs,
-        has_secret_key: policy.secret_key_hash.is_some(),
-        has_read_key: policy.read_key_hash.is_some(),
-        has_write_key: policy.write_key_hash.is_some(),
+        has_secret_key: presence.has_secret_key,
+        has_read_key: presence.has_read_key,
+        has_write_key: presence.has_write_key,
         has_signing_key: policy.signing_key.is_some(),
         signing_key_generation: policy.signing_key_generation,
         anonymous_access: policy.anonymous_access.into(),
@@ -164,10 +166,11 @@ fn hash_api_key_or_fail(root_key: &SigningKey, raw: &str) -> Result<Vec<u8>, Res
 }
 
 fn recompute_anonymous_access(policy: &BucketPolicy) -> Permission {
+    let presence = PolicyKeysPresence::from(policy);
     Permission::anonymous_from_keys(
-        policy.secret_key_hash.is_some(),
-        policy.read_key_hash.is_some(),
-        policy.write_key_hash.is_some(),
+        presence.has_secret_key,
+        presence.has_read_key,
+        presence.has_write_key,
     )
 }
 
@@ -417,10 +420,9 @@ pub async fn create_bucket(
 
     let id = BucketId::new(Uuid::new_v4().to_string())
         .expect("Uuid::new_v4().to_string() is never empty; BucketId::new rejects only empty");
-    state
-        .buckets()
-        .create_bucket(&id, policy)
-        .map_err(map_use_case_repo_err)?;
+    let buckets = state.buckets().clone();
+    let id2 = id.clone();
+    blocking::spawn_usecase(move || buckets.create_bucket(&id2, policy)).await?;
 
     let body = id.as_str().to_string();
     Ok((
@@ -482,19 +484,20 @@ pub async fn list_bucket(
         _ => params.prefix.as_ref().map(|s| s.as_bytes().to_vec()),
     };
 
-    let entries = KeyService::list(
-        state.keys().as_ref(),
-        state.clock().as_ref(),
-        &auth.bucket_id,
-        ListOptsInput {
-            prefix: prefix_for_repo,
-            limit: params.limit,
-            skip: params.skip,
-            reverse: params.reverse,
-            include_values: Some(include_values),
-        },
-    )
-    .map_err(map_use_case_repo_err)?;
+    let keys = state.keys().clone();
+    let clock = state.clock().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let input = ListOptsInput {
+        prefix: prefix_for_repo,
+        limit: params.limit,
+        skip: params.skip,
+        reverse: params.reverse,
+        include_values: Some(include_values),
+    };
+    let entries = blocking::spawn_usecase(move || {
+        KeyService::list(keys.as_ref(), clock.as_ref(), &bucket_id, input)
+    })
+    .await?;
 
     let entry_count = entries.len();
     let body = render_list_body(fmt, &entries, include_values)?;
@@ -546,20 +549,19 @@ pub async fn update_policy(
         serde_json::from_slice(&body).map_err(|_| bad_request())?
     };
 
-    let mut policy = state
-        .buckets()
-        .get_policy(&auth.bucket_id)
-        .map_err(map_use_case_repo_err)?
+    let buckets = state.buckets().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let mut policy = blocking::spawn_usecase(move || buckets.get_policy(&bucket_id))
+        .await?
         .ok_or_else(not_found)?;
 
     apply_policy_patch(&mut policy, patch, state.root_key().as_ref())?;
 
     policy.anonymous_access = recompute_anonymous_access(&policy);
 
-    state
-        .buckets()
-        .create_bucket(&auth.bucket_id, policy)
-        .map_err(map_use_case_repo_err)?;
+    let buckets = state.buckets().clone();
+    let bucket_id = auth.bucket_id.clone();
+    blocking::spawn_usecase(move || buckets.create_bucket(&bucket_id, policy)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -644,10 +646,9 @@ pub async fn delete_bucket(
 ) -> Result<StatusCode, Response> {
     auth.require_admin()?;
 
-    state
-        .buckets()
-        .delete_bucket(&auth.bucket_id)
-        .map_err(map_use_case_repo_err)?;
+    let buckets = state.buckets().clone();
+    let bucket_id = auth.bucket_id.clone();
+    blocking::spawn_usecase(move || buckets.delete_bucket(&bucket_id)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -677,10 +678,10 @@ pub async fn get_bucket_policy(
     // and lifetime defaults, so it stays scoped to `secret_key` holders.
     auth.require_admin()?;
 
-    let policy = state
-        .buckets()
-        .get_policy(&auth.bucket_id)
-        .map_err(map_use_case_repo_err)?
+    let buckets = state.buckets().clone();
+    let bucket_id = auth.bucket_id.clone();
+    let policy = blocking::spawn_usecase(move || buckets.get_policy(&bucket_id))
+        .await?
         .ok_or_else(not_found)?;
 
     Ok(axum::Json(public_policy_view(&policy)))

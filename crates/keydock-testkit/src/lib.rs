@@ -18,7 +18,7 @@ pub use tokens::{PolicyPatch, TokenSetup};
 
 use keydock_domain::{BucketId, Key, SigningKey};
 use keydock_fjall::FjallStore;
-use keydock_http::build_router;
+use keydock_http::{RouterOptions, build_router};
 use keydock_state::AppState;
 use keydock_support::clock::SystemClock;
 
@@ -143,11 +143,7 @@ fn build_test_app()
 
     let prometheus = prometheus_handle()?;
 
-    let router = build_router(
-        state,
-        prometheus.clone(),
-        keydock_config::RateLimitConfig::default(),
-    );
+    let router = build_router(state, prometheus.clone(), RouterOptions::default());
     let server = axum_test::TestServer::new(router);
 
     Ok((dir, store, server))

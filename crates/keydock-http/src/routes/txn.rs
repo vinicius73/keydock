@@ -11,6 +11,7 @@ use serde_json::Value as JsonValue;
 use tracing::instrument;
 use utoipa::ToSchema;
 
+use crate::blocking;
 use crate::error::{bad_request, map_use_case_repo_err};
 use crate::extract::{BucketAuth, parse_percent_encoded_key};
 
@@ -123,8 +124,9 @@ pub async fn execute_txn(
         }
     }
 
-    TxnService::execute(state.keys().as_ref(), &auth.bucket_id, &ops)
-        .map_err(map_use_case_repo_err)?;
+    let keys = state.keys().clone();
+    let bucket_id = auth.bucket_id.clone();
+    blocking::spawn_usecase(move || TxnService::execute(keys.as_ref(), &bucket_id, &ops)).await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }

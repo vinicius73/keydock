@@ -4,7 +4,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use keydock_config::RateLimitConfig;
 use keydock_state::AppState;
 use metrics_exporter_prometheus::PrometheusHandle;
 use real::RealIpLayer;
@@ -21,7 +20,23 @@ use axum_governor::GovernorLayer;
 use crate::error::method_not_allowed;
 use crate::middleware::metrics;
 use crate::openapi::{API_PREFIX, openapi};
+use crate::rate_limit::RateLimitSettings;
 use crate::routes::{buckets, health, keys, tokens, txn};
+
+#[derive(Debug, Clone)]
+pub struct RouterOptions {
+    pub expose_metrics: bool,
+    pub rate_limit: RateLimitSettings,
+}
+
+impl Default for RouterOptions {
+    fn default() -> Self {
+        Self {
+            expose_metrics: true,
+            rate_limit: RateLimitSettings::default(),
+        }
+    }
+}
 
 /// Fallback for routes whose path matches but the HTTP method is not allowed.
 ///
@@ -35,30 +50,12 @@ async fn method_not_allowed_fallback() -> Response {
     method_not_allowed()
 }
 
-/// Builds the HTTP service with standard middleware and routes.
-#[instrument(skip_all)]
-pub fn build_router(
-    state: AppState,
-    prometheus: PrometheusHandle,
-    rate_limit_cfg: RateLimitConfig,
-) -> Router {
+pub fn build_metrics_router<S>(prometheus: PrometheusHandle) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
     let prom = prometheus.clone();
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods([
-            Method::GET,
-            Method::POST,
-            Method::PUT,
-            Method::PATCH,
-            Method::DELETE,
-            Method::OPTIONS,
-        ])
-        .allow_headers(Any);
-
-    let ops_routes = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi()))
-        .route("/health", get(health::health_check))
-        .route("/ready", get(health::readiness_check))
+    Router::<S>::new()
         .route(
             "/metrics",
             get(move || {
@@ -75,7 +72,37 @@ pub fn build_router(
                         .into_response()
                 }
             }),
-        );
+        )
+        .method_not_allowed_fallback(method_not_allowed_fallback)
+}
+
+/// Builds the HTTP service with standard middleware and routes.
+///
+/// When `opts.rate_limit.enabled` is `true`, the caller must initialize the
+/// process-global limiter via [`crate::rate_limit::init_rate_limiter`] before
+/// serving requests.
+#[instrument(skip_all)]
+pub fn build_router(state: AppState, prometheus: PrometheusHandle, opts: RouterOptions) -> Router {
+    let cors = CorsLayer::new()
+        .allow_origin(Any)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(Any);
+
+    let mut ops_routes = Router::new()
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi()))
+        .route("/health", get(health::health_check))
+        .route("/ready", get(health::readiness_check));
+
+    if opts.expose_metrics {
+        ops_routes = ops_routes.merge(build_metrics_router(prometheus.clone()));
+    }
 
     let mut api_routes = Router::new()
         .route("/", post(buckets::create_bucket))
@@ -107,7 +134,7 @@ pub fn build_router(
 
     let ops_routes = ops_routes.method_not_allowed_fallback(method_not_allowed_fallback);
 
-    if rate_limit_cfg.enabled {
+    if opts.rate_limit.enabled {
         api_routes = api_routes.layer(
             ServiceBuilder::new()
                 .layer(RealIpLayer::default())
