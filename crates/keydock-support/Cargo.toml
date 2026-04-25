@@ -6,7 +6,4 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-secrecy = { workspace = true }
-thiserror = { workspace = true }
 time = { workspace = true }
-zeroize = { workspace = true }
