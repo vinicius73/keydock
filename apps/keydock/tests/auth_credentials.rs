@@ -1,8 +1,7 @@
 //! Credential channel and permission matrix (HTTP integration).
 
 use axum::http::header;
-use keydock_testkit::{BucketSetup, TestContext, basic_auth_header};
-use serde_json::json;
+use keydock_testkit::{BucketSetup, TestContext, api_error_body_json, basic_auth_header};
 
 #[tokio::test]
 async fn bearer_secret_key_grants_admin() {
@@ -39,12 +38,7 @@ async fn bearer_write_key_grants_write() {
         .authorization_bearer("r")
         .await;
     forbidden.assert_status_forbidden();
-    forbidden.assert_json(&json!({
-        "error": {
-            "code": 403,
-            "message": "forbidden"
-        }
-    }));
+    forbidden.assert_json(&api_error_body_json(403, "forbidden"));
 }
 
 #[tokio::test]
@@ -58,21 +52,11 @@ async fn bearer_read_key_grants_read() {
         .authorization_bearer("r")
         .await;
     ok.assert_status_not_found();
-    ok.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    ok.assert_json(&api_error_body_json(404, "not_found"));
 
     let unauthorized = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     unauthorized.assert_status_unauthorized();
-    unauthorized.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    unauthorized.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -85,12 +69,7 @@ async fn query_param_access_token_works() {
         .get(&format!("/api/v1/{bid}/k1?access_token=r"))
         .await;
     response.assert_status_not_found();
-    response.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -100,12 +79,7 @@ async fn query_param_key_works() {
 
     let response = ctx.server.get(&format!("/api/v1/{bid}/k1?key=r")).await;
     response.assert_status_not_found();
-    response.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -119,12 +93,7 @@ async fn basic_auth_works() {
         .authorization(basic_auth_header("r"))
         .await;
     response.assert_status_not_found();
-    response.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -138,12 +107,7 @@ async fn wrong_credential_returns_401() {
         .authorization_bearer("wrong")
         .await;
     response.assert_status_unauthorized();
-    response.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -151,12 +115,7 @@ async fn missing_bucket_returns_404() {
     let ctx = TestContext::new();
     let response = ctx.server.get("/api/v1/no-such-bucket/k").await;
     response.assert_status_not_found();
-    response.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -166,12 +125,7 @@ async fn anonymous_public_bucket_read() {
 
     let response = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     response.assert_status_not_found();
-    response.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -182,10 +136,5 @@ async fn anonymous_restricted_bucket_read() {
     let response = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     response.assert_status_unauthorized();
 
-    response.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }

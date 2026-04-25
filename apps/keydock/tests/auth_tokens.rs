@@ -1,8 +1,9 @@
 //! Temporary token lifecycle and scope (HTTP integration).
 
-use keydock_testkit::{BucketSetup, PolicyPatch, TestContext, TokenSetup};
 use pretty_assertions::assert_eq;
 use serde_json::{Value, json};
+
+use keydock_testkit::{BucketSetup, PolicyPatch, TestContext, TokenSetup, api_error_body_json};
 
 #[track_caller]
 fn access_token_str(body: &Value) -> &str {
@@ -25,12 +26,7 @@ async fn create_token_requires_admin() {
     let form = TokenSetup::read("scope:", 3600);
     let forbidden = ctx.create_token(&bid, "w", &form).await;
     forbidden.assert_status_forbidden();
-    forbidden.assert_json(&json!({
-        "error": {
-            "code": 403,
-            "message": "forbidden"
-        }
-    }));
+    forbidden.assert_json(&api_error_body_json(403, "forbidden"));
 
     let ok = ctx.create_token(&bid, "sec", &form).await;
     ok.assert_status_ok();
@@ -62,12 +58,7 @@ async fn token_read_within_prefix() {
         .authorization_bearer(&access)
         .await;
     ok.assert_status_not_found();
-    ok.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    ok.assert_json(&api_error_body_json(404, "not_found"));
 }
 
 #[tokio::test]
@@ -90,12 +81,7 @@ async fn token_read_outside_prefix() {
         .authorization_bearer(&access)
         .await;
     response.assert_status_forbidden();
-    response.assert_json(&json!({
-        "error": {
-            "code": 403,
-            "message": "forbidden"
-        }
-    }));
+    response.assert_json(&api_error_body_json(403, "forbidden"));
 }
 
 #[tokio::test]
@@ -114,12 +100,7 @@ async fn token_expired_is_rejected_on_use() {
         .authorization_bearer(&access)
         .await;
     response.assert_status_unauthorized();
-    response.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -131,12 +112,7 @@ async fn token_mint_rejects_non_positive_ttl() {
         let form = TokenSetup::read("scope:", ttl);
         let response = ctx.create_token(&bid, "sec", &form).await;
         response.assert_status_bad_request();
-        response.assert_json(&json!({
-            "error": {
-                "code": 400,
-                "message": "bad_request"
-            }
-        }));
+        response.assert_json(&api_error_body_json(400, "bad_request"));
     }
 }
 
@@ -148,12 +124,7 @@ async fn token_mint_rejects_empty_prefix() {
     let form = TokenSetup::read("", 3600);
     let response = ctx.create_token(&bid, "sec", &form).await;
     response.assert_status_bad_request();
-    response.assert_json(&json!({
-        "error": {
-            "code": 400,
-            "message": "bad_request"
-        }
-    }));
+    response.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
@@ -187,12 +158,7 @@ async fn token_wrong_bucket() {
         .authorization_bearer(&access)
         .await;
     response.assert_status_unauthorized();
-    response.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
 #[tokio::test]
@@ -224,12 +190,7 @@ async fn token_invalidated_after_signing_key_rotation() {
         .authorization_bearer(&access)
         .await;
     ok_before.assert_status_not_found();
-    ok_before.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    ok_before.assert_json(&api_error_body_json(404, "not_found"));
 
     let patch = ctx
         .patch_policy(&bid, "sec", &PolicyPatch::rotate_signing_key("sign2"))
@@ -242,12 +203,7 @@ async fn token_invalidated_after_signing_key_rotation() {
         .authorization_bearer(&access)
         .await;
     unauthorized.assert_status_unauthorized();
-    unauthorized.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    unauthorized.assert_json(&api_error_body_json(401, "unauthorized"));
 
     let tok2 = ctx.create_token(&bid, "sec", &form).await;
     tok2.assert_status_ok();
@@ -263,10 +219,5 @@ async fn token_invalidated_after_signing_key_rotation() {
         .authorization_bearer(&access2)
         .await;
     ok_after.assert_status_not_found();
-    ok_after.assert_json(&json!({
-        "error": {
-            "code": 404,
-            "message": "not_found"
-        }
-    }));
+    ok_after.assert_json(&api_error_body_json(404, "not_found"));
 }

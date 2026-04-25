@@ -1,11 +1,11 @@
 //! Bucket creation flows (HTTP integration).
 
 use bytes::Bytes;
-use keydock_testkit::{BucketSetup, TestContext, api_error_body_json};
 use pretty_assertions::assert_eq;
 use rstest::rstest;
-use serde_json::json;
 use uuid::Uuid;
+
+use keydock_testkit::{BucketSetup, TestContext, api_error_body_json};
 
 #[rstest]
 #[case("owner@example.com")]
@@ -87,10 +87,5 @@ async fn create_restricted_bucket() {
 
     let response = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     response.assert_status_unauthorized();
-    response.assert_json(&json!({
-        "error": {
-            "code": 401,
-            "message": "unauthorized"
-        }
-    }));
+    response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
