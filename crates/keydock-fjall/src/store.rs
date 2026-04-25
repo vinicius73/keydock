@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
@@ -13,12 +13,14 @@ use tracing::instrument;
 use crate::FjallError;
 use crate::codec::{decode_policy, encode_policy};
 use crate::gc::GcSweeper;
-use crate::layout::{DATA_KEYSPACE, META_KEYSPACE};
+use crate::layout::{DATA_KEYSPACE, EXPIRY_KEYSPACE, META_KEYSPACE};
+use crate::locks::StripedLocks;
 use crate::repos::{
-    data_key_prefix, data_storage_key, decode_entry, encode_entry, user_key_from_storage_key,
+    data_key_prefix, data_storage_key, decode_entry, decode_entry_expires_unix, encode_entry,
+    expiry_index_key, user_key_from_storage_key,
 };
 
-/// Above this many keys after the expiry filter, reverse listing logs a memory warning (full prefix is materialized).
+/// Above this many keys after the expiry filter, reverse listing logs a warning.
 const REVERSE_LIST_WARN_ENTRY_COUNT: usize = 50_000;
 
 fn record_storage_op<T>(op: &'static str, result: &Result<T, UseCaseError>) {
@@ -32,8 +34,9 @@ pub struct FjallStore {
     db: Arc<Database>,
     meta: Arc<Keyspace>,
     data: Arc<Keyspace>,
-    /// Serializes read-modify-write for counters (Fjall has no native compare-and-swap).
-    increment_lock: Arc<Mutex<()>>,
+    expiry: Arc<Keyspace>,
+    /// Serializes conflicting writes for the same storage key.
+    write_locks: Arc<StripedLocks>,
 }
 
 impl FjallStore {
@@ -42,17 +45,24 @@ impl FjallStore {
         let db = Arc::new(Database::builder(path).open()?);
         let meta = Arc::new(db.keyspace(META_KEYSPACE, KeyspaceCreateOptions::default)?);
         let data = Arc::new(db.keyspace(DATA_KEYSPACE, KeyspaceCreateOptions::default)?);
+        let expiry = Arc::new(db.keyspace(EXPIRY_KEYSPACE, KeyspaceCreateOptions::default)?);
         Ok(Self {
             db,
             meta,
             data,
-            increment_lock: Arc::new(Mutex::new(())),
+            expiry,
+            write_locks: Arc::new(StripedLocks::new()),
         })
     }
 
     #[instrument(skip_all, name = "FjallStore::build_gc_sweeper")]
     pub fn build_gc_sweeper(&self, interval: Duration) -> GcSweeper {
-        GcSweeper::new(Arc::clone(&self.data), interval)
+        GcSweeper::new(
+            Arc::clone(&self.data),
+            Arc::clone(&self.expiry),
+            Arc::clone(&self.write_locks),
+            interval,
+        )
     }
 
     /// Writes arbitrary bytes at the data-keyspace storage key for
@@ -166,8 +176,17 @@ impl KeyRepository for FjallStore {
     ) -> Result<(), UseCaseError> {
         let result = (|| -> Result<(), UseCaseError> {
             let k = data_storage_key(bucket, key);
+            let _guard = self.write_locks.lock_for(&k)?;
             let bytes = encode_entry(&value, expires_at)?;
-            self.data.insert(&k, bytes).map_err(FjallError::from)?;
+            if let Some(exp) = expires_at {
+                let idx = expiry_index_key(exp.unix_timestamp(), &k);
+                let mut batch = self.db.batch();
+                batch.insert(self.data.as_ref(), k, bytes);
+                batch.insert(self.expiry.as_ref(), idx, []);
+                batch.commit().map_err(FjallError::from)?;
+            } else {
+                self.data.insert(&k, bytes).map_err(FjallError::from)?;
+            }
             Ok(())
         })();
         record_storage_op("set", &result);
@@ -182,6 +201,7 @@ impl KeyRepository for FjallStore {
     fn delete(&self, bucket: &BucketId, key: &Key) -> Result<bool, UseCaseError> {
         let result = (|| -> Result<bool, UseCaseError> {
             let k = data_storage_key(bucket, key);
+            let _guard = self.write_locks.lock_for(&k)?;
             let existed = self.data.contains_key(&k).map_err(FjallError::from)?;
             if existed {
                 self.data.remove(&k).map_err(FjallError::from)?;
@@ -216,11 +236,8 @@ impl KeyRepository for FjallStore {
         expires_at: Option<OffsetDateTime>,
     ) -> Result<StoredValue, UseCaseError> {
         let result = (|| -> Result<StoredValue, UseCaseError> {
-            let _guard = self
-                .increment_lock
-                .lock()
-                .map_err(|_| FjallError::Adapter("increment lock poisoned".into()))?;
             let k = data_storage_key(bucket, key);
+            let _guard = self.write_locks.lock_for(&k)?;
             let now = OffsetDateTime::now_utc();
             let current = match self.data.get(&k).map_err(FjallError::from)? {
                 None => CounterValue::Int(0),
@@ -238,7 +255,15 @@ impl KeyRepository for FjallStore {
             let merged = op.apply(current)?;
             let stored = merged.into_stored()?;
             let bytes = encode_entry(&stored, expires_at)?;
-            self.data.insert(&k, bytes).map_err(FjallError::from)?;
+            if let Some(exp) = expires_at {
+                let idx = expiry_index_key(exp.unix_timestamp(), &k);
+                let mut batch = self.db.batch();
+                batch.insert(self.data.as_ref(), k, bytes);
+                batch.insert(self.expiry.as_ref(), idx, []);
+                batch.commit().map_err(FjallError::from)?;
+            } else {
+                self.data.insert(&k, bytes).map_err(FjallError::from)?;
+            }
             Ok(stored)
         })();
         record_storage_op("increment", &result);
@@ -251,7 +276,19 @@ impl KeyRepository for FjallStore {
             if ops.is_empty() {
                 return Ok(());
             }
-            let mut batch = self.db.batch();
+
+            enum BatchItem {
+                Set {
+                    storage_key: Vec<u8>,
+                    bytes: Vec<u8>,
+                    idx: Option<Vec<u8>>,
+                },
+                Delete {
+                    storage_key: Vec<u8>,
+                },
+            }
+
+            let mut items: Vec<BatchItem> = Vec::with_capacity(ops.len());
             for op in ops {
                 match op {
                     TxnOp::Set {
@@ -260,11 +297,45 @@ impl KeyRepository for FjallStore {
                         expires_at,
                     } => {
                         let storage_key = data_storage_key(bucket, key);
+                        let idx = expires_at.map(|exp| {
+                            expiry_index_key(exp.unix_timestamp(), storage_key.as_slice())
+                        });
                         let bytes = encode_entry(value, *expires_at)?;
-                        batch.insert(self.data.as_ref(), storage_key, bytes);
+                        items.push(BatchItem::Set {
+                            storage_key,
+                            bytes,
+                            idx,
+                        });
                     }
                     TxnOp::Delete { key } => {
                         let storage_key = data_storage_key(bucket, key);
+                        items.push(BatchItem::Delete { storage_key });
+                    }
+                }
+            }
+
+            let _guards =
+                self.write_locks
+                    .lock_stripes_for_keys(items.iter().map(|it| match it {
+                        BatchItem::Set { storage_key, .. } | BatchItem::Delete { storage_key } => {
+                            storage_key.as_slice()
+                        }
+                    }))?;
+
+            let mut batch = self.db.batch();
+            for it in items {
+                match it {
+                    BatchItem::Set {
+                        storage_key,
+                        bytes,
+                        idx,
+                    } => {
+                        batch.insert(self.data.as_ref(), storage_key, bytes);
+                        if let Some(idx) = idx {
+                            batch.insert(self.expiry.as_ref(), idx, []);
+                        }
+                    }
+                    BatchItem::Delete { storage_key } => {
                         batch.remove(self.data.as_ref(), storage_key);
                     }
                 }
@@ -288,10 +359,18 @@ impl FjallStore {
         }
 
         let scan_prefix = data_key_prefix(bucket, opts.prefix);
+        let cutoff_unix = opts.expires_before.map(|t| t.unix_timestamp());
 
         if opts.reverse {
-            // Reverse order requires every matching entry before skip/limit (fjall prefix scan is forward-only).
-            let mut collected: Vec<ListEntry> = Vec::new();
+            let window = opts.skip.saturating_add(opts.limit);
+            if window == 0 {
+                return Ok(vec![]);
+            }
+
+            // Fjall prefix scan is forward-only; keep only the last `skip + limit` entries so memory is bounded.
+            let mut matched = 0usize;
+            let mut deque: std::collections::VecDeque<ListEntry> =
+                std::collections::VecDeque::with_capacity(window);
             for guard in self.data.prefix(scan_prefix) {
                 let (uk, uv) = guard.into_inner().map_err(FjallError::from)?;
                 let storage_key = uk.as_ref();
@@ -300,34 +379,48 @@ impl FjallStore {
                     continue;
                 };
 
-                let entry = decode_entry(uv.as_ref())?;
-
-                if let (Some(cutoff), Some(exp)) = (opts.expires_before, entry.expires_at)
-                    && exp <= cutoff
-                {
-                    continue;
+                if opts.include_values {
+                    let entry = decode_entry(uv.as_ref())?;
+                    if let (Some(cutoff), Some(exp)) = (opts.expires_before, entry.expires_at)
+                        && exp <= cutoff
+                    {
+                        continue;
+                    }
+                    matched += 1;
+                    deque.push_back(ListEntry {
+                        key: user_key,
+                        value: Some(entry.value),
+                    });
+                } else {
+                    let expires_unix = decode_entry_expires_unix(uv.as_ref())?;
+                    if let (Some(cutoff), Some(exp)) = (cutoff_unix, expires_unix)
+                        && exp <= cutoff
+                    {
+                        continue;
+                    }
+                    matched += 1;
+                    deque.push_back(ListEntry {
+                        key: user_key,
+                        value: None,
+                    });
                 }
 
-                let value = if opts.include_values {
-                    Some(entry.value)
-                } else {
-                    None
-                };
-                collected.push(ListEntry {
-                    key: user_key,
-                    value,
-                });
+                while deque.len() > window {
+                    deque.pop_front();
+                }
             }
-            if collected.len() >= REVERSE_LIST_WARN_ENTRY_COUNT {
+
+            if matched >= REVERSE_LIST_WARN_ENTRY_COUNT {
                 tracing::warn!(
                     bucket = %bucket.as_str(),
-                    matched = collected.len(),
-                    "reverse listing materialized a large key set; memory scales with prefix match count"
+                    matched,
+                    "reverse listing scanned a large key set"
                 );
             }
-            collected.reverse();
-            let out: Vec<ListEntry> = collected
+
+            let out: Vec<ListEntry> = deque
                 .into_iter()
+                .rev()
                 .skip(opts.skip)
                 .take(opts.limit)
                 .collect();
@@ -350,9 +443,29 @@ impl FjallStore {
                 continue;
             };
 
-            let entry = decode_entry(uv.as_ref())?;
+            if opts.include_values {
+                let entry = decode_entry(uv.as_ref())?;
+                if let (Some(cutoff), Some(exp)) = (opts.expires_before, entry.expires_at)
+                    && exp <= cutoff
+                {
+                    continue;
+                }
 
-            if let (Some(cutoff), Some(exp)) = (opts.expires_before, entry.expires_at)
+                if skip_remaining > 0 {
+                    skip_remaining -= 1;
+                    continue;
+                }
+
+                out.push(ListEntry {
+                    key: user_key,
+                    value: Some(entry.value),
+                });
+                taken += 1;
+                continue;
+            }
+
+            let expires_unix = decode_entry_expires_unix(uv.as_ref())?;
+            if let (Some(cutoff), Some(exp)) = (cutoff_unix, expires_unix)
                 && exp <= cutoff
             {
                 continue;
@@ -363,14 +476,9 @@ impl FjallStore {
                 continue;
             }
 
-            let value = if opts.include_values {
-                Some(entry.value)
-            } else {
-                None
-            };
             out.push(ListEntry {
                 key: user_key,
-                value,
+                value: None,
             });
             taken += 1;
         }

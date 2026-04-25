@@ -6,6 +6,7 @@ pub mod codec;
 pub mod error;
 pub mod gc;
 pub mod layout;
+mod locks;
 pub mod repos;
 pub mod store;
 
