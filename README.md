@@ -59,6 +59,8 @@ GET /api-docs/openapi.json
 GET /swagger-ui/
 ```
 
+When `http.metrics_listen` is configured, `/metrics` is served on that dedicated listener instead of the main HTTP address.
+
 ## Configuration
 
 `keydock init <DIR>` creates:

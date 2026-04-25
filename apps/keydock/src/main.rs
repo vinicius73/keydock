@@ -16,7 +16,7 @@ use tracing_subscriber::EnvFilter;
 use keydock_config::{CliError, Command, Config, ServeArgs, write_init_config};
 use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
-use keydock_http::build_router;
+use keydock_http::{RateLimitSettings, RouterOptions, build_metrics_router, build_router};
 use keydock_state::AppState;
 use keydock_support::clock::SystemClock;
 use keydock_usecase::ports::{BucketRepository, KeyRepository};
@@ -89,14 +89,21 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     let root_key = Arc::new(SigningKey::new(Box::new(config.root_key.expose_bytes())));
     let state = AppState::new(env!("CARGO_PKG_VERSION"), clock, buckets, keys, root_key);
 
-    if config.rate_limit.enabled {
-        let tokens = u32::try_from(config.rate_limit.requests_per_hour).unwrap_or(u32::MAX);
-        let rule = lazy_limit::RuleConfig::new(lazy_limit::Duration::hours(1), tokens);
-        let limiter_config = lazy_limit::LimiterConfig::new(rule);
-        lazy_limit::initialize_limiter(limiter_config).await;
-    }
+    let rate_limit = RateLimitSettings {
+        enabled: config.rate_limit.enabled,
+        requests_per_hour: config.rate_limit.requests_per_hour,
+    };
+    keydock_http::init_rate_limiter(&rate_limit).await;
 
-    let router = build_router(state, prometheus, config.rate_limit.clone());
+    let expose_metrics_on_main = config.http.metrics_listen.is_none();
+    let router = build_router(
+        state,
+        prometheus.clone(),
+        RouterOptions {
+            expose_metrics: expose_metrics_on_main,
+            rate_limit: rate_limit.clone(),
+        },
+    );
 
     let addr = config.http.listen;
     let listener = TcpListener::bind(addr)
@@ -104,6 +111,32 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
         .with_context(|| format!("bind {addr}"))?;
 
     tracing::info!(%addr, "listening");
+
+    let shutdown_cancel = CancellationToken::new();
+    let metrics_handle = if let Some(metrics_addr) = config.http.metrics_listen {
+        let metrics_listener = TcpListener::bind(metrics_addr)
+            .await
+            .with_context(|| format!("bind metrics listener {metrics_addr}"))?;
+        let metrics_router = build_metrics_router(prometheus.clone());
+        let cancel = shutdown_cancel.clone();
+        tracing::info!(%metrics_addr, "metrics listening");
+        Some(tokio::spawn(async move {
+            let shutdown = async move {
+                cancel.cancelled().await;
+            };
+            if let Err(e) = axum::serve(
+                metrics_listener,
+                metrics_router.into_make_service_with_connect_info::<SocketAddr>(),
+            )
+            .with_graceful_shutdown(shutdown)
+            .await
+            {
+                tracing::error!(error = %e, "metrics server stopped with error");
+            }
+        }))
+    } else {
+        None
+    };
 
     let gc_cancel = CancellationToken::new();
     let gc_interval_secs = config.gc.interval_secs;
@@ -120,11 +153,18 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
     )
     .with_graceful_shutdown(async move {
         shutdown_signal().await;
+        shutdown_cancel.cancel();
         gc_cancel.cancel();
         tracing::info!("gc cancellation requested");
     })
     .await
     .context("server")?;
+
+    if let Some(handle) = metrics_handle
+        && let Err(e) = handle.await
+    {
+        tracing::warn!(error = %e, "metrics server task join failed");
+    }
 
     tracing::info!("http server stopped");
     Ok(())

@@ -4,7 +4,7 @@
 [http]
 # Bind address. Use `0.0.0.0:8080` in containers so the port is reachable from the host.
 listen = "0.0.0.0:8080"
-# Optional dedicated listener for Prometheus scrape (when set, metrics may be served here only).
+# Optional dedicated listener for Prometheus scrape (when set, `/metrics` is served on this address instead of the main listener).
 # metrics_listen = "127.0.0.1:9090"
 
 [paths]
