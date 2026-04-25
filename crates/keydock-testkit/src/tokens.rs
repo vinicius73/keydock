@@ -9,7 +9,7 @@ use time::{Duration, OffsetDateTime};
 
 use crate::TestContext;
 
-/// Form payload for `POST /{bucket}/tokens/`.
+/// Form payload for `POST /api/v1{bucket}/tokens/`.
 ///
 /// Both `prefix` and a positive `ttl` are mandatory at the server; these
 /// fields carry the raw values that will be sent to the server (no filtering
@@ -38,7 +38,7 @@ impl TokenSetup {
     }
 }
 
-/// JSON body for `PATCH /{bucket}`.
+/// JSON body for `PATCH /api/v1/{bucket}`.
 ///
 /// Uses `serde_json::Value` so tests can express the three-way semantics
 /// (absent / `null` / value) without bespoke types: a field set to
@@ -143,7 +143,7 @@ pub async fn create_token(
 ) -> axum_test::TestResponse {
     let body = serde_urlencoded::to_string(setup).expect("encode token form");
     server
-        .post(&format!("/{bucket_id}/tokens/"))
+        .post(&format!("/api/v1/{bucket_id}/tokens/"))
         .authorization_bearer(bearer)
         .bytes(Bytes::from(body))
         .content_type("application/x-www-form-urlencoded")
@@ -158,7 +158,7 @@ pub async fn patch_policy(
 ) -> axum_test::TestResponse {
     let body = serde_json::to_vec(patch).expect("encode policy patch as JSON");
     server
-        .patch(&format!("/{bucket_id}"))
+        .patch(&format!("/api/v1/{bucket_id}"))
         .authorization_bearer(bearer)
         .bytes(Bytes::from(body))
         .content_type("application/json")

@@ -12,7 +12,7 @@ use tokio::time::sleep;
 async fn get_returns_404_after_ttl_expires() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
-    let path = format!("/{bid}/ttl1");
+    let path = format!("/api/v1/{bid}/ttl1");
 
     ctx.server
         .post(&path)
@@ -31,7 +31,7 @@ async fn get_returns_404_after_ttl_expires() {
 async fn write_renews_ttl() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
-    let path = format!("/{bid}/ttl-renew");
+    let path = format!("/api/v1/{bid}/ttl-renew");
 
     ctx.server
         .post(&path)
@@ -60,14 +60,14 @@ async fn write_renews_ttl() {
 async fn create_bucket_without_default_ttl_uses_hosted_default_of_seven_days() {
     // Omitting `default_ttl` on create must fall back to
     // the hosted-compatible default of 7 days (604800 seconds). The public
-    // `GET /{bucket}` projection is the authoritative surface that clients
+    // `GET /api/v1/{bucket}` projection is the authoritative surface that clients
     // use to discover this value, so we assert it there end-to-end.
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
     let response = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
@@ -90,7 +90,7 @@ async fn create_bucket_with_explicit_default_ttl_zero_preserves_no_expiry() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
@@ -110,7 +110,7 @@ async fn create_bucket_with_explicit_default_ttl_is_preserved() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
@@ -122,7 +122,7 @@ async fn create_bucket_with_explicit_default_ttl_is_preserved() {
 async fn expired_key_not_in_listing() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
-    let path = format!("/{bid}/gone");
+    let path = format!("/api/v1/{bid}/gone");
 
     ctx.server
         .post(&path)
@@ -135,7 +135,7 @@ async fn expired_key_not_in_listing() {
 
     let list = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .add_header(header::ACCEPT, "application/json")
         .await;
     list.assert_status_ok();

@@ -10,7 +10,7 @@ use keydock_testkit::{BucketSetup, TestContext, TokenSetup, api_error_body_json}
 async fn patch_missing_key_plus_1() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/c");
+    let path = format!("/api/v1/{bid}/c");
 
     let patch = ctx
         .server
@@ -27,7 +27,7 @@ async fn patch_missing_key_plus_1() {
 async fn patch_missing_key_minus_3() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/neg");
+    let path = format!("/api/v1/{bid}/neg");
 
     let patch = ctx
         .server
@@ -43,7 +43,7 @@ async fn patch_missing_key_minus_3() {
 async fn patch_int_plus_int() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/n");
+    let path = format!("/api/v1/{bid}/n");
 
     ctx.server
         .put(&path)
@@ -66,7 +66,7 @@ async fn patch_int_plus_int() {
 async fn patch_int_plus_float() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/pf");
+    let path = format!("/api/v1/{bid}/pf");
 
     ctx.server
         .put(&path)
@@ -90,7 +90,7 @@ async fn patch_int_plus_float() {
 async fn patch_float_plus_int() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/fi");
+    let path = format!("/api/v1/{bid}/fi");
 
     ctx.server
         .put(&path)
@@ -117,7 +117,7 @@ async fn patch_float_plus_int() {
 async fn patch_invalid_body_returns_400(#[case] body: &str) {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/bad");
+    let path = format!("/api/v1/{bid}/bad");
 
     let patch = ctx
         .server
@@ -133,7 +133,7 @@ async fn patch_invalid_body_returns_400(#[case] body: &str) {
 async fn patch_non_numeric_existing_value_returns_400() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/txt");
+    let path = format!("/api/v1/{bid}/txt");
 
     ctx.server
         .put(&path)
@@ -156,7 +156,7 @@ async fn patch_non_numeric_existing_value_returns_400() {
 async fn patch_overflow_int64_returns_400() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/ov");
+    let path = format!("/api/v1/{bid}/ov");
 
     ctx.server
         .put(&path)
@@ -179,7 +179,7 @@ async fn patch_overflow_int64_returns_400() {
 async fn patch_requires_write_permission() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/k");
+    let path = format!("/api/v1/{bid}/k");
 
     let patch = ctx
         .server
@@ -201,7 +201,7 @@ async fn patch_unauthorized_without_credential() {
             ..BucketSetup::default()
         })
         .await;
-    let path = format!("/{bid}/k");
+    let path = format!("/api/v1/{bid}/k");
 
     let patch = ctx.server.patch(&path).text("+1").await;
     patch.assert_status_unauthorized();
@@ -212,7 +212,7 @@ async fn patch_unauthorized_without_credential() {
 async fn patch_with_ttl_expires() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/ttl");
+    let path = format!("/api/v1/{bid}/ttl");
 
     ctx.server
         .patch(&format!("{path}?ttl=1"))
@@ -254,7 +254,7 @@ async fn patch_scoped_token_prefix_enforced() {
 
     let patch = ctx
         .server
-        .patch(&format!("/{bid}/y:key"))
+        .patch(&format!("/api/v1/{bid}/y:key"))
         .authorization_bearer(token)
         .text("+1")
         .await;

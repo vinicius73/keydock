@@ -1,13 +1,13 @@
-//! Compatibility test for `DELETE /{bucket}/` (trailing slash alias).
+//! Compatibility test for `DELETE /api/v1/{bucket}/` (trailing slash alias).
 //!
-//! The trailing-slash form shares the `delete_bucket` handler with `DELETE /{bucket}`,
+//! The trailing-slash form shares the `delete_bucket` handler with `DELETE /api/v1/{bucket}`,
 //! so these cases pin down:
 //!
 //! - Successful delete (204) with a valid `secret_key`.
 //! - Envelope-shaped 403 for anonymous callers (delete is admin-only, so
-//!   `require_admin` returns forbidden, mirroring `DELETE /{bucket}`).
+//!   `require_admin` returns forbidden, mirroring `DELETE /api/v1/{bucket}`).
 //! - Envelope-shaped 404 for unknown buckets.
-//! - Both `DELETE /{bucket}` and `DELETE /{bucket}/` accept the same credential.
+//! - Both `DELETE /api/v1/{bucket}` and `DELETE /api/v1/{bucket}/` accept the same credential.
 //!
 //! Anchoring the trailing-slash semantics here prevents a silent regression if the
 //! alias is ever dropped from the router.
@@ -24,7 +24,7 @@ async fn delete_bucket_trailing_slash_as_admin_returns_204() {
 
     let response = ctx
         .server
-        .delete(&format!("/{bid}/"))
+        .delete(&format!("/api/v1/{bid}/"))
         .authorization_bearer("sec")
         .await;
     response.assert_status(axum::http::StatusCode::NO_CONTENT);
@@ -32,7 +32,7 @@ async fn delete_bucket_trailing_slash_as_admin_returns_204() {
 
     let followup = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .authorization_bearer("sec")
         .await;
     followup.assert_status_not_found();
@@ -44,7 +44,7 @@ async fn delete_bucket_trailing_slash_anonymous_returns_403() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    let response = ctx.server.delete(&format!("/{bid}/")).await;
+    let response = ctx.server.delete(&format!("/api/v1/{bid}/")).await;
     response.assert_status_forbidden();
     response.assert_json(&api_error_body_json(403, "forbidden"));
 }
@@ -56,7 +56,7 @@ async fn delete_bucket_trailing_slash_unknown_returns_404() {
 
     let response = ctx
         .server
-        .delete(&format!("/{unknown}/"))
+        .delete(&format!("/api/v1/{unknown}/"))
         .add_header(
             axum::http::header::AUTHORIZATION,
             basic_auth_header("anything"),
@@ -74,7 +74,7 @@ async fn delete_bucket_both_forms_accept_admin_credential(#[case] suffix: &str) 
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    let path = format!("/{bid}{suffix}");
+    let path = format!("/api/v1/{bid}{suffix}");
     let response = ctx.server.delete(&path).authorization_bearer("sec").await;
     response.assert_status(axum::http::StatusCode::NO_CONTENT);
 }

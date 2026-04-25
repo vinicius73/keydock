@@ -32,7 +32,7 @@ fn stored_value_response(value: &StoredValue) -> Result<Response, Response> {
         .into_response())
 }
 
-/// Query parameters for key write operations (`PUT`/`POST`/`PATCH /{bucket}/{key}`).
+/// Query parameters for key write operations (`PUT`/`POST`/`PATCH /api/v1/{bucket}/{key}`).
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 #[into_params(parameter_in = Query)]
 pub struct TtlQuery {

@@ -58,7 +58,7 @@ async fn token_read_within_prefix() {
 
     let ok = ctx
         .server
-        .get(&format!("/{bid}/user:42:name"))
+        .get(&format!("/api/v1/{bid}/user:42:name"))
         .authorization_bearer(&access)
         .await;
     ok.assert_status_not_found();
@@ -86,7 +86,7 @@ async fn token_read_outside_prefix() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}/admin:config"))
+        .get(&format!("/api/v1/{bid}/admin:config"))
         .authorization_bearer(&access)
         .await;
     response.assert_status_forbidden();
@@ -110,7 +110,7 @@ async fn token_expired_is_rejected_on_use() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer(&access)
         .await;
     response.assert_status_unauthorized();
@@ -183,7 +183,7 @@ async fn token_wrong_bucket() {
 
     let response = ctx
         .server
-        .get(&format!("/{b}/k1"))
+        .get(&format!("/api/v1/{b}/k1"))
         .authorization_bearer(&access)
         .await;
     response.assert_status_unauthorized();
@@ -216,7 +216,7 @@ async fn token_invalidated_after_signing_key_rotation() {
 
     // Read a key *inside* the token scope so the signature path (not the
     // prefix guard) is the one exercised across rotation.
-    let probe_key = format!("/{bid}/scope:k1");
+    let probe_key = format!("/api/v1/{bid}/scope:k1");
 
     let ok_before = ctx
         .server

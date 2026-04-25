@@ -1,6 +1,6 @@
 //! Enumerate permission matrix (HTTP integration).
 //!
-//! Bucket listing (`GET /{bucket}/`) is part of the
+//! Bucket listing (`GET /api/v1/{bucket}/`) is part of the
 //! read side, so `read_key` is expected to grant `enumerate` together with
 //! read on individual keys. Without these cases, a regression that silently
 //! downgrades `read_key` to `read`-only (as in the legacy `Permission::READ_ONLY`
@@ -20,7 +20,7 @@ async fn read_key_can_enumerate_bucket() {
     // as the minimal signal: 200 OK with the expected body shape.
     let response = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .authorization_bearer("r")
         .await;
     response.assert_status_ok();
@@ -32,13 +32,13 @@ async fn read_key_enumerate_sees_written_keys() {
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
 
     ctx.server
-        .put(&format!("/{bid}/alpha"))
+        .put(&format!("/api/v1/{bid}/alpha"))
         .authorization_bearer("w")
         .text("a")
         .await
         .assert_status_ok();
     ctx.server
-        .put(&format!("/{bid}/beta"))
+        .put(&format!("/api/v1/{bid}/beta"))
         .authorization_bearer("w")
         .text("b")
         .await
@@ -46,7 +46,7 @@ async fn read_key_enumerate_sees_written_keys() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .authorization_bearer("r")
         .await;
     response.assert_status_ok();
@@ -64,7 +64,7 @@ async fn write_key_cannot_enumerate() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .authorization_bearer("w")
         .await;
     response.assert_status_forbidden();
@@ -76,7 +76,7 @@ async fn anonymous_cannot_enumerate_restricted_bucket() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx.server.get(&format!("/{bid}/")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/")).await;
     response.assert_status_unauthorized();
     response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
@@ -86,7 +86,7 @@ async fn anonymous_can_enumerate_public_bucket() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
 
-    let response = ctx.server.get(&format!("/{bid}/?format=json")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/?format=json")).await;
     response.assert_status_ok();
     response.assert_json(&json!([]));
 }

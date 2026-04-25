@@ -4,7 +4,7 @@ use axum_test::TestServer;
 use bytes::Bytes;
 use serde::Serialize;
 
-/// Form payload for `POST /` (bucket creation) in integration tests.
+/// Form payload for `POST /api/v1` (bucket creation) in integration tests.
 #[derive(Clone, Debug, Serialize)]
 pub struct BucketSetup {
     pub email: String,
@@ -78,7 +78,7 @@ impl BucketSetup {
 pub async fn create_bucket(server: &TestServer, setup: &BucketSetup) -> String {
     let body = serde_urlencoded::to_string(setup).expect("encode bucket form");
     let response = server
-        .post("/")
+        .post("/api/v1")
         .bytes(Bytes::from(body))
         .content_type("application/x-www-form-urlencoded")
         .await;

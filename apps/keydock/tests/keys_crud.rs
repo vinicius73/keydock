@@ -8,7 +8,7 @@ use rstest::rstest;
 async fn put_text_get_roundtrip() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/msg");
+    let path = format!("/api/v1/{bid}/msg");
 
     let put = ctx
         .server
@@ -30,7 +30,7 @@ async fn put_text_get_roundtrip() {
 async fn put_json_get_roundtrip() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/j1");
+    let path = format!("/api/v1/{bid}/j1");
     let body = r#"{"x":1}"#;
 
     let put = ctx
@@ -57,7 +57,7 @@ async fn put_json_get_roundtrip() {
 async fn put_numeric_string_get_roundtrip(#[case] stored: &str, #[case] read_back: &str) {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/num");
+    let path = format!("/api/v1/{bid}/num");
 
     ctx.server
         .put(&path)
@@ -78,7 +78,7 @@ async fn get_missing_returns_404() {
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
     let response = ctx
         .server
-        .get(&format!("/{bid}/nope"))
+        .get(&format!("/api/v1/{bid}/nope"))
         .authorization_bearer("r")
         .await;
     response.assert_status_not_found();
@@ -89,7 +89,7 @@ async fn get_missing_returns_404() {
 async fn post_primary_method_roundtrip() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let path = format!("/{bid}/via-post");
+    let path = format!("/api/v1/{bid}/via-post");
 
     ctx.server
         .post(&path)
@@ -110,7 +110,7 @@ async fn key_too_long_returns_400() {
     let long_key = "a".repeat(129);
     let response = ctx
         .server
-        .put(&format!("/{bid}/{long_key}"))
+        .put(&format!("/api/v1/{bid}/{long_key}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_bad_request();
@@ -124,7 +124,7 @@ async fn value_too_large_returns_400() {
     let payload = vec![b'x'; 16 * 1024 + 1];
     let response = ctx
         .server
-        .put(&format!("/{bid}/big"))
+        .put(&format!("/api/v1/{bid}/big"))
         .authorization_bearer("sec")
         .bytes(payload.into())
         .await;
@@ -136,7 +136,7 @@ async fn value_too_large_returns_400() {
 async fn delete_existing_then_missing() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
-    let path = format!("/{bid}/delme");
+    let path = format!("/api/v1/{bid}/delme");
 
     ctx.server
         .put(&path)
@@ -161,7 +161,7 @@ async fn delete_existing_then_missing() {
 async fn put_without_credential_on_restricted_bucket() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let response = ctx.server.put(&format!("/{bid}/k")).await;
+    let response = ctx.server.put(&format!("/api/v1/{bid}/k")).await;
     response.assert_status_unauthorized();
     response.assert_json(&api_error_body_json(401, "unauthorized"));
 }
@@ -172,7 +172,7 @@ async fn put_with_wrong_credential_on_admin_bucket() {
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
     let response = ctx
         .server
-        .put(&format!("/{bid}/k"))
+        .put(&format!("/api/v1/{bid}/k"))
         .authorization_bearer("wrong")
         .await;
     response.assert_status_unauthorized();

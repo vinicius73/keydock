@@ -1,4 +1,4 @@
-//! Compatibility tests for `GET /{bucket}` (bucket policy view).
+//! Compatibility tests for `GET /api/v1/{bucket}` (bucket policy view).
 //!
 //! Pins the public JSON projection contract:
 //!
@@ -26,7 +26,7 @@ async fn get_bucket_policy_admin_returns_public_projection() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
@@ -65,11 +65,11 @@ async fn get_bucket_policy_admin_returns_public_projection() {
 #[tokio::test]
 async fn get_bucket_policy_anonymous_returns_403() {
     // Admin-only gate surfaces as 403 because the request is authenticated
-    // against the bucket (no credential), consistent with `DELETE /{bucket}`.
+    // against the bucket (no credential), consistent with `DELETE /api/v1/{bucket}`.
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    let response = ctx.server.get(&format!("/{bid}")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}")).await;
     response.assert_status_forbidden();
     response.assert_json(&api_error_body_json(403, "forbidden"));
 }
@@ -86,7 +86,7 @@ async fn get_bucket_policy_read_key_returns_403() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("r")
         .await;
     response.assert_status_forbidden();
@@ -98,7 +98,7 @@ async fn get_bucket_policy_unknown_bucket_returns_404() {
     let ctx = TestContext::new();
     let unknown = Uuid::new_v4().to_string();
 
-    let response = ctx.server.get(&format!("/{unknown}")).await;
+    let response = ctx.server.get(&format!("/api/v1/{unknown}")).await;
     response.assert_status_not_found();
     response.assert_json(&api_error_body_json(404, "not_found"));
 }
@@ -117,7 +117,7 @@ async fn get_bucket_policy_reflects_signing_key_rotation() {
 
     let before: Value = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await
         .json();
@@ -129,7 +129,7 @@ async fn get_bucket_policy_reflects_signing_key_rotation() {
 
     let after: Value = ctx
         .server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await
         .json();

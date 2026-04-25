@@ -25,9 +25,9 @@ async fn delete_on_metrics_returns_405_with_envelope() {
 
 #[tokio::test]
 async fn get_on_root_returns_405_with_envelope() {
-    // `POST /` exists (create_bucket), so GET must yield 405 (not 404).
+    // `POST /api/v1` exists (create_bucket), so GET must yield 405 (not 404).
     let ctx = TestContext::new();
-    let response = ctx.server.get("/").await;
+    let response = ctx.server.get("/api/v1").await;
     response.assert_status(axum::http::StatusCode::METHOD_NOT_ALLOWED);
     response.assert_json(&api_error_body_json(405, "method_not_allowed"));
 }
@@ -37,11 +37,11 @@ async fn unsupported_method_on_bucket_key_returns_405_with_envelope() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    // `POST /{bucket}` is `execute_txn`; OPTIONS is allowed by CORS preflight.
+    // `POST /api/v1{bucket}` is `execute_txn`; OPTIONS is allowed by CORS preflight.
     // We exercise a path that exists but does not register this method.
     let response = ctx
         .server
-        .method(axum::http::Method::CONNECT, &format!("/{bid}"))
+        .method(axum::http::Method::CONNECT, &format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status(axum::http::StatusCode::METHOD_NOT_ALLOWED);

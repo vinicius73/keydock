@@ -1,4 +1,4 @@
-//! Multi-key transaction endpoint (`POST /{bucket}`).
+//! Multi-key transaction endpoint (`POST /api/v1{bucket}`).
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -47,7 +47,7 @@ pub enum TxnItem {
     Delete(TxnDelete),
 }
 
-/// Request body for `POST /{bucket}` (atomic batch).
+/// Request body for `POST /api/v1{bucket}` (atomic batch).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct TxnRequest {
     pub txn: Vec<TxnItem>,
