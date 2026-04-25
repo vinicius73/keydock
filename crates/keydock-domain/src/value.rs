@@ -9,29 +9,12 @@ pub const MAX_VALUE_BYTES: usize = 16 * 1024;
 /// Stored value with basic classification for response shaping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct StoredValue {
-    #[serde(with = "serde_bytes")]
+    #[serde(
+        serialize_with = "crate::serde_bytes::serialize",
+        deserialize_with = "crate::serde_bytes::deserialize_value"
+    )]
     pub payload: Bytes,
     pub kind: ValueKind,
-}
-
-mod serde_bytes {
-    use bytes::Bytes;
-    use serde::{Deserialize, Deserializer, Serializer};
-
-    pub fn serialize<S>(bytes: &Bytes, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_bytes(bytes.as_ref())
-    }
-
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<Bytes, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let v = <Vec<u8>>::deserialize(deserializer)?;
-        Ok(Bytes::from(v))
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

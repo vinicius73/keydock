@@ -8,6 +8,7 @@ pub mod error;
 pub mod key;
 pub mod permission;
 pub mod policy;
+pub(crate) mod serde_bytes;
 pub mod token;
 pub mod value;
 
