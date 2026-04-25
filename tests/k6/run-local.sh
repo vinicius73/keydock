@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly DEFAULT_ALL_SCENARIOS="smoke security regression load"
+readonly DEFAULT_ALL_SCENARIOS="smoke security regression contracts load"
 readonly READY_TIMEOUT_SECONDS=25
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -14,7 +14,7 @@ Usage:
   tests/k6/run-local.sh <scenario>
 
 Scenarios:
-  smoke | security | regression | load | all
+  smoke | security | regression | contracts | load | all
 
 Environment variables:
   PORT        Port to bind (default: 18080)
@@ -23,7 +23,7 @@ Environment variables:
   KEYDOCK_BASE_URL  Base URL when START_KEYDOCK=0 (e.g. http://127.0.0.1:8080)
   WAIT_READY  1|0 (default: 1). When 1, probes GET /ready before running k6.
   K6_CLEANUP  1|0|true|false (default: false). When false, do not delete buckets at end of scenarios.
-  ALL_SCENARIOS  Space-separated list when scenario=all (default: "smoke security regression load")
+  ALL_SCENARIOS  Space-separated list when scenario=all (default: "smoke security regression contracts load")
   K6_MODE     auto|local|docker|docker-exec (default: auto)
   K6_BIN      Override k6 binary (default: k6)
   DOCKER_BIN  Override docker binary (default: docker)
@@ -137,8 +137,10 @@ validate_scenario_name() {
   local value="$1"
 
   case "${value}" in
-    smoke | security | regression | load | all) ;;
-    *) die "unknown scenario '${value}' (expected: smoke|security|regression|load|all)" ;;
+    smoke | security | regression | contracts | load | all) ;;
+    *)
+      die "unknown scenario '${value}' (expected: smoke|security|regression|contracts|load|all)"
+      ;;
   esac
 }
 

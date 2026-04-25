@@ -17,6 +17,11 @@ Unlike the Rust integration tests in `apps/keydock/tests`, these tests run again
 - Either `k6` installed **or** Docker/Podman available (the harness can run k6 inside a container)
 - `curl` installed (used by the harness for readiness probing)
 
+## Assertions
+
+These scenarios use the `k6-testing` `expect()` API (Playwright-inspired assertions) via `tests/k6/lib/testing.js`,
+pinned to `k6-testing/0.6.1`. Protocol tests primarily use **non-retrying** assertions.
+
 Arch-based distros:
 
 ```bash
@@ -31,7 +36,7 @@ Run the smoke scenario against a locally started process:
 tests/k6/run-local.sh smoke
 ```
 
-Run all scenarios (smoke + security + regression + a short load baseline):
+Run all scenarios (smoke + security + regression + contracts + a short load baseline):
 
 ```bash
 tests/k6/run-local.sh all
@@ -80,6 +85,7 @@ Notes for `docker-exec`:
 - `smoke`: single deterministic end-to-end flow (mandatory)
 - `security`: auth/authz contract checks (no load)
 - `regression`: light concurrency + isolation checks
+- `contracts`: explicit request/response contract suite (types, headers, error envelopes)
 - `load`: opt-in baseline load (not meant to run on every CI job)
 - `all`: runs multiple scenarios in sequence (configurable via `ALL_SCENARIOS`)
 
@@ -108,7 +114,7 @@ The harness supports a few knobs:
 - `KEYDOCK_BASE_URL`: required when `START_KEYDOCK=0`
 - `WAIT_READY`: `1|0` (default: `1`)
 - `K6_CLEANUP`: `1|0|true|false` (default: `false`). When false, scenarios skip bucket deletion at the end.
-- `ALL_SCENARIOS`: space-separated list for `all` (default: `smoke security regression load`)
+- `ALL_SCENARIOS`: space-separated list for `all` (default: `smoke security regression contracts load`)
 - `K6_BIN`: override k6 binary (default: `k6`)
 - `DOCKER_BIN`: override docker binary (default: `docker`) — set to `podman` if desired
 - `K6_IMAGE`: docker image for k6 (default: `grafana/k6:latest`)

@@ -1,5 +1,5 @@
 import http from "k6/http";
-import { check, fail } from "k6";
+import { fail } from "k6";
 
 export function url(path) {
   const base = __ENV.KEYDOCK_BASE_URL;
@@ -36,10 +36,16 @@ function failWithContext(ctx, res, opts = {}) {
   fail(`${ctx} (status=${res.status}) body=${JSON.stringify(snippet)}`);
 }
 
-export function must(res, checks, ctx, opts) {
-  const ok = check(res, checks);
-  if (!ok) failWithContext(ctx, res, opts);
-  return res;
+export function withResponseContext(res, ctx, opts, fn) {
+  try {
+    return fn();
+  } catch (e) {
+    const msg =
+      e && typeof e === "object" && "message" in e
+        ? String(e.message)
+        : String(e);
+    failWithContext(`${ctx}: ${msg}`, res, opts);
+  }
 }
 
 function mergeHeaders(base, extra) {
@@ -66,12 +72,24 @@ export function get(path, params) {
   return http.get(url(path), params);
 }
 
+export function head(path, params) {
+  return http.request("HEAD", url(path), null, params);
+}
+
 export function del(path, params) {
   return http.del(url(path), null, params);
 }
 
 export function putText(path, text, params) {
   return http.put(url(path), text, params);
+}
+
+export function putBytes(path, bytes, params) {
+  return http.put(url(path), bytes, params);
+}
+
+export function patchText(path, text, params) {
+  return http.request("PATCH", url(path), text, params);
 }
 
 export function postText(path, text, params) {

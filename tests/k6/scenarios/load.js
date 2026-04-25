@@ -2,15 +2,12 @@ import { Trend } from "k6/metrics";
 
 import { bucketSetupRestrictedAndSigned } from "../lib/data.js";
 import { cleanupEnabled } from "../lib/env.js";
-import {
-  createBucket,
-  deleteBucket,
-  deleteKey,
-  getKey,
-  putKey,
-} from "../lib/api.js";
-import { must } from "../lib/client.js";
+import { deleteBucket, deleteKey, getKey, putKey } from "../lib/api.js";
+import { createRestrictedBucket } from "../lib/contract.js";
+import { expect } from "../lib/testing.js";
 import { writeSummary } from "../lib/summary.js";
+
+const SCENARIO = "load";
 
 export const keyRoundtripDuration = new Trend("key_roundtrip_duration", true);
 
@@ -24,7 +21,6 @@ export const options = {
     },
   },
   thresholds: {
-    checks: ["rate>0.999"],
     http_req_failed: ["rate<0.01"],
     http_req_duration: ["p(95)<500"],
     "http_req_duration{name:PUT /api/v1/:bucket/:key}": ["p(95)<500"],
@@ -39,13 +35,11 @@ export function handleSummary(data) {
 
 export function setup() {
   const bucket = bucketSetupRestrictedAndSigned();
-  const res = createBucket(bucket, { scenario: "load", flow: "setup" });
-  must(
-    res,
-    { "create bucket: status=200": (r) => r.status === 200 },
-    "POST /api/v1 (load setup)",
-  );
-  const bid = String(res.body).trim();
+  const bid = createRestrictedBucket({
+    scenario: SCENARIO,
+    flow: "setup",
+    form: bucket,
+  });
   return { bucket: bucket, bid: bid };
 }
 
@@ -57,32 +51,31 @@ export default function load(data) {
   // Keep URLs low-cardinality so k6 doesn't blow up metrics with unique time series.
   const key = `load:k-${__ENV.RUN_ID || "run"}-vu${__VU}`;
 
+  // Load is intentionally tolerant: use soft assertions so transient failures show up in metrics
+  // without aborting the whole run early (which would skew results).
   const put = putKey(bid, key, "x", bucket.write_key, {
-    scenario: "load",
+    scenario: SCENARIO,
     flow: "key_roundtrip",
   });
-  must(
-    put,
-    { "put: 200": (r) => r.status === 200 },
-    `PUT /api/v1/${bid}/${key}`,
-  );
+  if (put.status !== 200) {
+    expect.soft(put.status, `PUT /api/v1/${bid}/${key} status`).toBe(200);
+    return;
+  }
 
   const g = getKey(bid, key, bucket.read_key, {
-    scenario: "load",
+    scenario: SCENARIO,
     flow: "key_roundtrip",
   });
-  must(g, { "get: 200": (r) => r.status === 200 }, `GET /api/v1/${bid}/${key}`);
+  if (g.status !== 200) {
+    expect.soft(g.status, `GET /api/v1/${bid}/${key} status`).toBe(200);
+  }
 
   // Keep the dataset bounded so long runs don't degrade.
   const d = deleteKey(bid, key, bucket.secret_key, {
-    scenario: "load",
+    scenario: SCENARIO,
     flow: "key_roundtrip",
   });
-  must(
-    d,
-    { "delete: 204": (r) => r.status === 204 },
-    `DELETE /api/v1/${bid}/${key}`,
-  );
+  expect.soft(d.status, `DELETE /api/v1/${bid}/${key} status`).toBe(204);
 
   keyRoundtripDuration.add(Date.now() - startedAt);
 }
@@ -92,7 +85,7 @@ export function teardown(data) {
   const bucket = data.bucket;
   const bid = data.bid;
   const res = deleteBucket(bid, bucket.secret_key, {
-    scenario: "load",
+    scenario: SCENARIO,
     flow: "cleanup",
   });
   if (res.status !== 204 && res.status !== 404) {
