@@ -19,15 +19,21 @@ use axum::middleware;
 
 use axum_governor::GovernorLayer;
 
-use crate::error::not_implemented;
+use crate::error::method_not_allowed;
 use crate::middleware::metrics;
 use crate::openapi::ApiDoc;
 use crate::routes::{buckets, health, keys, tokens, txn};
 
-/// Placeholder until M5 exposes `GET /{bucket}` for bucket policy.
-#[instrument(skip_all, name = "router::get_bucket_reserved_for_m5")]
-async fn get_bucket_reserved_for_m5() -> Response {
-    not_implemented("GET /{bucket} reserved for M5")
+/// Fallback for routes whose path matches but the HTTP method is not allowed.
+///
+/// Axum's default fallback responds with an empty body, which breaks the
+/// `{"error": {...}}` envelope clients rely on. Wiring this via
+/// `method_not_allowed_fallback` per-route keeps `OPTIONS` preflight handled
+/// by the CORS layer while emitting the shared envelope for unsupported
+/// methods on mounted routes.
+#[instrument(skip_all, name = "router::method_not_allowed_fallback")]
+async fn method_not_allowed_fallback() -> Response {
+    method_not_allowed()
 }
 
 /// Builds the HTTP service with standard middleware and routes.
@@ -78,19 +84,29 @@ pub fn build_router(
         .route(
             "/{bucket}/{key}",
             get(keys::get_key)
+                .head(keys::head_key)
                 .post(keys::put_key)
                 .put(keys::put_key)
                 .delete(keys::delete_key)
                 .patch(keys::patch_key),
         )
-        .route("/{bucket}/", get(buckets::list_bucket))
+        .route(
+            "/{bucket}/",
+            get(buckets::list_bucket).delete(buckets::delete_bucket),
+        )
         .route(
             "/{bucket}",
-            get(get_bucket_reserved_for_m5)
+            get(buckets::get_bucket_policy)
+                .head(buckets::head_bucket)
                 .post(txn::execute_txn)
                 .patch(buckets::update_policy)
                 .delete(buckets::delete_bucket),
-        );
+        )
+        // Scoped 405 fallback: applies only to the mounted API routes so that
+        // `OPTIONS` on other paths still flows through the CORS layer.
+        .method_not_allowed_fallback(method_not_allowed_fallback);
+
+    let ops_routes = ops_routes.method_not_allowed_fallback(method_not_allowed_fallback);
 
     if rate_limit_cfg.enabled {
         api_routes = api_routes.layer(

@@ -240,7 +240,7 @@ async fn patch_scoped_token_prefix_enforced() {
         .await;
 
     let form = TokenSetup {
-        prefix: Some("x:".into()),
+        prefix: "x:".into(),
         permissions: "read,write,enumerate,delete".into(),
         ttl: 3600,
     };

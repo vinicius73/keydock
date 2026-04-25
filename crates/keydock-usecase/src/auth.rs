@@ -69,8 +69,12 @@ pub fn resolve(
     if let Some(ref h) = policy.read_key_hash
         && verify_credential(cred, h, root_key)
     {
+        // `read_key` authenticates the bucket's read side, which covers both
+        // `get` and `list`. Granting `enumerate` here preserves the
+        // "public read with a known key" flow without forcing clients onto
+        // `secret_key`.
         return Ok(ResolvedIdentity::Scoped {
-            permissions: Permission::READ_ONLY,
+            permissions: Permission::READ_ENUMERATE,
             key_prefix: Vec::new(),
         });
     }
@@ -147,7 +151,26 @@ mod tests {
             key_prefix,
         } = id
         {
-            assert_eq!(permissions.write, true);
+            assert_eq!(permissions, Permission::WRITE_ONLY);
+            assert_eq!(key_prefix.len(), 0);
+        } else {
+            assert_eq!(false, true, "expected Scoped identity");
+        }
+    }
+
+    #[test]
+    fn resolve_read_key_grants_read_and_enumerate() {
+        let bucket = BucketId::new("b".to_string()).unwrap();
+        let p = policy_with_hashes(None, None, Some("r"));
+        let rk = root_key();
+        let now = OffsetDateTime::now_utc();
+        let id = resolve(Some("r"), &p, &bucket, &rk, now).unwrap();
+        if let ResolvedIdentity::Scoped {
+            permissions,
+            key_prefix,
+        } = id
+        {
+            assert_eq!(permissions, Permission::READ_ENUMERATE);
             assert_eq!(key_prefix.len(), 0);
         } else {
             assert_eq!(false, true, "expected Scoped identity");

@@ -58,6 +58,11 @@ pub fn not_acceptable() -> Response {
 }
 
 #[instrument(skip_all)]
+pub fn method_not_allowed() -> Response {
+    json_error(StatusCode::METHOD_NOT_ALLOWED, "method_not_allowed")
+}
+
+#[instrument(skip_all)]
 pub fn service_unavailable() -> Response {
     json_error(StatusCode::SERVICE_UNAVAILABLE, "service_unavailable")
 }

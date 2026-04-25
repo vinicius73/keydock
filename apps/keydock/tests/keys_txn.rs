@@ -250,7 +250,7 @@ async fn txn_scoped_token_prefix_enforced_on_set() {
         .await;
 
     let form = TokenSetup {
-        prefix: Some("x:".into()),
+        prefix: "x:".into(),
         permissions: "read,write,enumerate,delete".into(),
         ttl: 3600,
     };
@@ -286,14 +286,16 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
         .await;
 
     ctx.server
-        .put(&format!("/{bid}/seed"))
+        .put(&format!("/{bid}/scope:seed"))
         .authorization_bearer("sec")
         .text("orig")
         .await
         .assert_status_ok();
 
+    // Scoped token without `delete`; prefix is required and non-empty,
+    // so we co-locate both keys under `scope:` and restrict the token there.
     let form = TokenSetup {
-        prefix: None,
+        prefix: "scope:".into(),
         permissions: "read,write,enumerate".into(),
         ttl: 3600,
     };
@@ -311,8 +313,8 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
         .authorization_bearer(token)
         .json(&json!({
             "txn": [
-                { "set": "newk", "value": "nv" },
-                { "delete": "seed" }
+                { "set": "scope:newk", "value": "nv" },
+                { "delete": "scope:seed" }
             ]
         }))
         .await;
@@ -321,14 +323,14 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
 
     let g_new = ctx
         .server
-        .get(&format!("/{bid}/newk"))
+        .get(&format!("/{bid}/scope:newk"))
         .authorization_bearer(token)
         .await;
     g_new.assert_status_not_found();
 
     let g_seed = ctx
         .server
-        .get(&format!("/{bid}/seed"))
+        .get(&format!("/{bid}/scope:seed"))
         .authorization_bearer(token)
         .await;
     g_seed.assert_status_ok();

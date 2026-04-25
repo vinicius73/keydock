@@ -22,7 +22,7 @@ async fn create_token_requires_admin() {
         })
         .await;
 
-    let form = TokenSetup::read(3600);
+    let form = TokenSetup::read("scope:", 3600);
     let forbidden = ctx.create_token(&bid, "w", &form).await;
     forbidden.assert_status_forbidden();
     forbidden.assert_json(&json!({
@@ -47,7 +47,7 @@ async fn token_read_within_prefix() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
-    let form = TokenSetup::read_prefixed("user:42:", 3600);
+    let form = TokenSetup::read("user:42:", 3600);
     let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
@@ -75,7 +75,7 @@ async fn token_read_outside_prefix() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
-    let form = TokenSetup::read_prefixed("user:42:", 3600);
+    let form = TokenSetup::read("user:42:", 3600);
     let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
@@ -99,18 +99,14 @@ async fn token_read_outside_prefix() {
 }
 
 #[tokio::test]
-async fn token_expired() {
+async fn token_expired_is_rejected_on_use() {
+    // `POST /tokens/` now rejects `ttl <= 0`, so we mint the expired token
+    // directly through the testkit helper (which uses the same signing path as
+    // the server) and assert that `verify` refuses it at the first request.
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
-    let form = TokenSetup::expired();
-    let tok = ctx.create_token(&bid, "sec", &form).await;
-    tok.assert_status_ok();
-    let token: Value = tok.json();
-    let access = access_token_str(&token).to_string();
-    tok.assert_json(&json!({
-        "access_token": access
-    }));
+    let access = ctx.mint_expired_read_token(&bid, "sign");
 
     let response = ctx
         .server
@@ -122,6 +118,40 @@ async fn token_expired() {
         "error": {
             "code": 401,
             "message": "unauthorized"
+        }
+    }));
+}
+
+#[tokio::test]
+async fn token_mint_rejects_non_positive_ttl() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
+
+    for ttl in [0_i64, -1, i64::MIN] {
+        let form = TokenSetup::read("scope:", ttl);
+        let response = ctx.create_token(&bid, "sec", &form).await;
+        response.assert_status_bad_request();
+        response.assert_json(&json!({
+            "error": {
+                "code": 400,
+                "message": "bad_request"
+            }
+        }));
+    }
+}
+
+#[tokio::test]
+async fn token_mint_rejects_empty_prefix() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
+
+    let form = TokenSetup::read("", 3600);
+    let response = ctx.create_token(&bid, "sec", &form).await;
+    response.assert_status_bad_request();
+    response.assert_json(&json!({
+        "error": {
+            "code": 400,
+            "message": "bad_request"
         }
     }));
 }
@@ -142,7 +172,7 @@ async fn token_wrong_bucket() {
         })
         .await;
 
-    let form = TokenSetup::read(3600);
+    let form = TokenSetup::read("scope:", 3600);
     let tok = ctx.create_token(&a, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
@@ -175,7 +205,7 @@ async fn token_invalidated_after_signing_key_rotation() {
         })
         .await;
 
-    let form = TokenSetup::read(3600);
+    let form = TokenSetup::read("scope:", 3600);
     let tok = ctx.create_token(&bid, "sec", &form).await;
     tok.assert_status_ok();
     let token: Value = tok.json();
@@ -184,9 +214,13 @@ async fn token_invalidated_after_signing_key_rotation() {
         "access_token": access
     }));
 
+    // Read a key *inside* the token scope so the signature path (not the
+    // prefix guard) is the one exercised across rotation.
+    let probe_key = format!("/{bid}/scope:k1");
+
     let ok_before = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&probe_key)
         .authorization_bearer(&access)
         .await;
     ok_before.assert_status_not_found();
@@ -204,7 +238,7 @@ async fn token_invalidated_after_signing_key_rotation() {
 
     let unauthorized = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&probe_key)
         .authorization_bearer(&access)
         .await;
     unauthorized.assert_status_unauthorized();
@@ -225,7 +259,7 @@ async fn token_invalidated_after_signing_key_rotation() {
 
     let ok_after = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&probe_key)
         .authorization_bearer(&access2)
         .await;
     ok_after.assert_status_not_found();

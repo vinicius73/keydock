@@ -81,6 +81,46 @@ pub async fn get_key(
     stored_value_response(&entry.value)
 }
 
+#[instrument(skip_all, name = "keys::head_key")]
+#[utoipa::path(
+    head,
+    path = "/{bucket}/{key}",
+    params(
+        ("bucket" = String, Path, description = "Bucket id"),
+        ("key" = String, Path, description = "Key (percent-encoded in the path)"),
+    ),
+    responses(
+        (status = 200, description = "Key exists and has not expired; body is empty, Content-Type matches GET"),
+        (status = 400, description = "Bad request", body = crate::error::ErrorBody),
+        (status = 401, description = "Unauthorized", body = crate::error::ErrorBody),
+        (status = 403, description = "Forbidden", body = crate::error::ErrorBody),
+        (status = 404, description = "Key not found", body = crate::error::ErrorBody),
+        (status = 500, description = "Internal error", body = crate::error::ErrorBody),
+    ),
+    tag = "keys"
+)]
+pub async fn head_key(
+    State(state): State<AppState>,
+    auth: BucketAuth,
+    Path((_bucket, key)): Path<(String, String)>,
+) -> Result<Response, Response> {
+    // Same auth and TTL semantics as GET so existing tests translate cleanly;
+    // the only difference is that we drop the body on the way out.
+    let key_dom = parse_percent_encoded_key(&key)?;
+    auth.require_read_on(&key_dom)?;
+    let entry = KeyService::get(
+        state.keys().as_ref(),
+        state.clock().as_ref(),
+        &auth.bucket_id,
+        &key_dom,
+    )
+    .map_err(map_use_case_repo_err)?;
+
+    let ct = content_type_for_kind(entry.value.kind);
+    let hv = HeaderValue::from_static(ct);
+    Ok((StatusCode::OK, [(header::CONTENT_TYPE, hv)], Bytes::new()).into_response())
+}
+
 /// OpenAPI-only stub: `PUT`/`POST` share [`put_key`] (raw body is not described via `utoipa` on the handler).
 #[utoipa::path(
     put,
