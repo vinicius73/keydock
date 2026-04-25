@@ -2,22 +2,19 @@
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use hmac::Mac;
-use hmac::digest::KeyInit;
 use keydock_domain::{BucketId, BucketPolicy, SigningKey, TemporaryTokenClaims};
 use secrecy::ExposeSecret;
-use sha2::Sha256;
 use time::OffsetDateTime;
 
 use crate::TokenError;
-
-type HmacSha256 = hmac::Hmac<Sha256>;
+use crate::crypto;
 
 /// Signs JSON claims with the bucket `signing_key`. Format: `base64url(json).base64url(sig)`.
 #[tracing::instrument(skip_all)]
 pub fn mint(claims: &TemporaryTokenClaims, signing_key: &SigningKey) -> Result<String, TokenError> {
     let json = serde_json::to_vec(claims).map_err(|_| TokenError::Serialize)?;
-    let sig = hmac_sign(signing_key.expose_secret(), &json)?;
+    let sig = crypto::hmac_sha256(signing_key.expose_secret(), &json)
+        .map_err(|crypto::HmacError::InvalidKey| TokenError::InvalidFormat)?;
     let payload_b64 = URL_SAFE_NO_PAD.encode(&json);
     let sig_b64 = URL_SAFE_NO_PAD.encode(sig);
     Ok(format!("{payload_b64}.{sig_b64}"))
@@ -44,7 +41,8 @@ pub fn verify(
         .decode(sig_b64)
         .map_err(|_| TokenError::InvalidFormat)?;
 
-    let computed = hmac_sign(signing_key.expose_secret(), &json)?;
+    let computed = crypto::hmac_sha256(signing_key.expose_secret(), &json)
+        .map_err(|crypto::HmacError::InvalidKey| TokenError::InvalidFormat)?;
     if computed.len() != expected_sig.len() || !crate::ct::eq_bytes(&computed, &expected_sig) {
         return Err(TokenError::InvalidSignature);
     }
@@ -63,12 +61,6 @@ pub fn verify(
     }
 
     Ok(claims)
-}
-
-fn hmac_sign(key: &[u8], data: &[u8]) -> Result<Vec<u8>, TokenError> {
-    let mut mac = HmacSha256::new_from_slice(key).map_err(|_| TokenError::InvalidFormat)?;
-    mac.update(data);
-    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 #[cfg(test)]
