@@ -11,7 +11,7 @@ async fn bearer_secret_key_grants_admin() {
 
     let response = ctx
         .server
-        .put(&format!("/{bid}/k1"))
+        .put(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
@@ -26,7 +26,7 @@ async fn bearer_write_key_grants_write() {
 
     let ok = ctx
         .server
-        .put(&format!("/{bid}/k1"))
+        .put(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("w")
         .await;
     ok.assert_status_ok();
@@ -35,7 +35,7 @@ async fn bearer_write_key_grants_write() {
 
     let forbidden = ctx
         .server
-        .put(&format!("/{bid}/k1"))
+        .put(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("r")
         .await;
     forbidden.assert_status_forbidden();
@@ -54,7 +54,7 @@ async fn bearer_read_key_grants_read() {
 
     let ok = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("r")
         .await;
     ok.assert_status_not_found();
@@ -65,7 +65,7 @@ async fn bearer_read_key_grants_read() {
         }
     }));
 
-    let unauthorized = ctx.server.get(&format!("/{bid}/k1")).await;
+    let unauthorized = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     unauthorized.assert_status_unauthorized();
     unauthorized.assert_json(&json!({
         "error": {
@@ -80,7 +80,10 @@ async fn query_param_access_token_works() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx.server.get(&format!("/{bid}/k1?access_token=r")).await;
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1?access_token=r"))
+        .await;
     response.assert_status_not_found();
     response.assert_json(&json!({
         "error": {
@@ -95,7 +98,7 @@ async fn query_param_key_works() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx.server.get(&format!("/{bid}/k1?key=r")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/k1?key=r")).await;
     response.assert_status_not_found();
     response.assert_json(&json!({
         "error": {
@@ -112,7 +115,7 @@ async fn basic_auth_works() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&format!("/api/v1/{bid}/k1"))
         .authorization(basic_auth_header("r"))
         .await;
     response.assert_status_not_found();
@@ -131,7 +134,7 @@ async fn wrong_credential_returns_401() {
 
     let response = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("wrong")
         .await;
     response.assert_status_unauthorized();
@@ -146,7 +149,7 @@ async fn wrong_credential_returns_401() {
 #[tokio::test]
 async fn missing_bucket_returns_404() {
     let ctx = TestContext::new();
-    let response = ctx.server.get("/no-such-bucket/k").await;
+    let response = ctx.server.get("/api/v1/no-such-bucket/k").await;
     response.assert_status_not_found();
     response.assert_json(&json!({
         "error": {
@@ -161,7 +164,7 @@ async fn anonymous_public_bucket_read() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
 
-    let response = ctx.server.get(&format!("/{bid}/k1")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     response.assert_status_not_found();
     response.assert_json(&json!({
         "error": {
@@ -176,7 +179,7 @@ async fn anonymous_restricted_bucket_read() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx.server.get(&format!("/{bid}/k1")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     response.assert_status_unauthorized();
 
     response.assert_json(&json!({

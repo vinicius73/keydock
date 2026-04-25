@@ -1,6 +1,6 @@
-//! Compatibility tests for `HEAD /{bucket}`.
+//! Compatibility tests for `HEAD /api/v1/{bucket}`.
 //!
-//! HEAD shares auth with `GET /{bucket}` (admin-only) and returns an empty
+//! HEAD shares auth with `GET /api/v1/{bucket}` (admin-only) and returns an empty
 //! body so callers can probe existence without downloading the policy view.
 //! Without these anchors, a silent regression to 404 or 403 would go
 //! unnoticed because no existing test exercises the HEAD method.
@@ -20,7 +20,7 @@ async fn head_bucket_as_admin_returns_200_with_empty_body() {
 
     let response = ctx
         .server
-        .method(Method::HEAD, &format!("/{bid}"))
+        .method(Method::HEAD, &format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await;
     response.assert_status_ok();
@@ -34,7 +34,7 @@ async fn head_bucket_unknown_returns_404() {
 
     let response = ctx
         .server
-        .method(Method::HEAD, &format!("/{unknown}"))
+        .method(Method::HEAD, &format!("/api/v1/{unknown}"))
         .await;
     response.assert_status_not_found();
 }
@@ -46,7 +46,7 @@ async fn head_bucket_non_admin_returns_403() {
 
     let response = ctx
         .server
-        .method(Method::HEAD, &format!("/{bid}"))
+        .method(Method::HEAD, &format!("/api/v1/{bid}"))
         .authorization_bearer("r")
         .await;
     response.assert_status_forbidden();
@@ -57,6 +57,9 @@ async fn head_bucket_anonymous_restricted_returns_403() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
-    let response = ctx.server.method(Method::HEAD, &format!("/{bid}")).await;
+    let response = ctx
+        .server
+        .method(Method::HEAD, &format!("/api/v1/{bid}"))
+        .await;
     response.assert_status_forbidden();
 }

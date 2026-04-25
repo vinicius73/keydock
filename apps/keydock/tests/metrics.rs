@@ -35,7 +35,7 @@ async fn metrics_endpoint_advertises_content_type_and_help_lines() {
 
     ctx.server.get("/health").await.assert_status_ok();
     ctx.server
-        .put(&format!("/{bid}/warmup"))
+        .put(&format!("/api/v1/{bid}/warmup"))
         .authorization_bearer("sec")
         .text("seed")
         .await
@@ -45,7 +45,7 @@ async fn metrics_endpoint_advertises_content_type_and_help_lines() {
     let key = Key::from_bytes(Bytes::copy_from_slice(b"warmup")).expect("valid key");
     ctx.corrupt_entry(&bucket, &key);
     ctx.server
-        .get(&format!("/{bid}/warmup"))
+        .get(&format!("/api/v1/{bid}/warmup"))
         .authorization_bearer("sec")
         .await;
 
@@ -111,7 +111,7 @@ async fn storage_ops_total_increments_on_successful_put() {
     let before = sample_value_or_zero(&ctx.render_metrics().await, metric, &labels);
 
     ctx.server
-        .put(&format!("/{bid}/hello"))
+        .put(&format!("/api/v1/{bid}/hello"))
         .authorization_bearer("sec")
         .text("world")
         .await
@@ -132,7 +132,7 @@ async fn storage_errors_total_increments_on_codec_entry_failure() {
     let key_name = "doomed";
 
     ctx.server
-        .put(&format!("/{bid_text}/{key_name}"))
+        .put(&format!("/api/v1/{bid_text}/{key_name}"))
         .authorization_bearer("sec")
         .text("seed")
         .await
@@ -151,7 +151,7 @@ async fn storage_errors_total_increments_on_codec_entry_failure() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid_text}/{key_name}"))
+        .get(&format!("/api/v1/{bid_text}/{key_name}"))
         .authorization_bearer("sec")
         .await;
     get.assert_status_internal_server_error();

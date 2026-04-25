@@ -47,7 +47,7 @@ impl From<Permission> for AnonymousAccessView {
     }
 }
 
-/// Public projection of [`BucketPolicy`] returned by `GET /{bucket}`.
+/// Public projection of [`BucketPolicy`] returned by `GET /api/v1/{bucket}`.
 ///
 /// Intentionally excludes every sensitive field: API key hashes and the raw
 /// `signing_key` never leave the server. Only presence flags and rotation
@@ -88,7 +88,7 @@ pub struct CreateBucketForm {
     pub default_ttl: Option<u64>,
 }
 
-/// JSON body for `PATCH /{bucket}`.
+/// JSON body for `PATCH /api/v1/{bucket}`.
 ///
 /// Each field uses `Option<Option<T>>` so the handler can distinguish three
 /// distinct client intents:
@@ -127,7 +127,7 @@ where
     T::deserialize(deserializer).map(Some)
 }
 
-/// Query parameters for `GET /{bucket}/` (listing).
+/// Query parameters for `GET /api/v1/{bucket}/` (listing).
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 #[into_params(parameter_in = Query)]
 pub struct ListBucketParams {
@@ -703,14 +703,14 @@ pub async fn get_bucket_policy(
 )]
 #[instrument(skip_all, name = "buckets::head_bucket")]
 pub async fn head_bucket(auth: BucketAuth) -> Result<StatusCode, Response> {
-    // Mirrors `GET /{bucket}`'s admin gate: a successful HEAD confirms both
+    // Mirrors `GET /api/v1/{bucket}`'s admin gate: a successful HEAD confirms both
     // existence *and* admin access, so it must not be a probe for non-admins.
     // `BucketAuth` already failed with 404 if the bucket is unknown.
     auth.require_admin()?;
     Ok(StatusCode::OK)
 }
 
-/// OpenAPI-only stub for the trailing-slash alias `DELETE /{bucket}/`.
+/// OpenAPI-only stub for the trailing-slash alias `DELETE /api/v1/{bucket}/`.
 /// Shares the `delete_bucket` handler; documented separately so the public contract exposes both forms.
 #[utoipa::path(
     delete,

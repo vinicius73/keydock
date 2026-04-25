@@ -1,4 +1,4 @@
-//! Multi-key transactions (`POST /{bucket}`) — HTTP integration.
+//! Multi-key transactions (`POST /api/v1{bucket}`) — HTTP integration.
 
 use axum::http::header;
 use bytes::Bytes;
@@ -15,7 +15,7 @@ async fn txn_empty_batch_returns_204() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({ "txn": [] }))
         .await;
@@ -29,7 +29,7 @@ async fn txn_key_percent_decodes_like_path_keys() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "hello%20world", "value": "ok" }]
@@ -39,7 +39,7 @@ async fn txn_key_percent_decodes_like_path_keys() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/hello%20world"))
+        .get(&format!("/api/v1/{bid}/hello%20world"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -53,7 +53,7 @@ async fn txn_set_creates_key() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "k", "value": "hello" }]
@@ -63,7 +63,7 @@ async fn txn_set_creates_key() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/k"))
+        .get(&format!("/api/v1/{bid}/k"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -77,7 +77,7 @@ async fn txn_delete_removes_key() {
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
     ctx.server
-        .put(&format!("/{bid}/k"))
+        .put(&format!("/api/v1/{bid}/k"))
         .authorization_bearer("sec")
         .text("x")
         .await
@@ -85,7 +85,7 @@ async fn txn_delete_removes_key() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .json(&json!({
             "txn": [{ "delete": "k" }]
@@ -95,7 +95,7 @@ async fn txn_delete_removes_key() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/k"))
+        .get(&format!("/api/v1/{bid}/k"))
         .authorization_bearer("sec")
         .await;
     get.assert_status_not_found();
@@ -108,7 +108,7 @@ async fn txn_set_and_delete_atomic() {
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
     ctx.server
-        .put(&format!("/{bid}/k2"))
+        .put(&format!("/api/v1/{bid}/k2"))
         .authorization_bearer("sec")
         .text("v")
         .await
@@ -116,7 +116,7 @@ async fn txn_set_and_delete_atomic() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .json(&json!({
             "txn": [
@@ -129,7 +129,7 @@ async fn txn_set_and_delete_atomic() {
 
     let g1 = ctx
         .server
-        .get(&format!("/{bid}/k1"))
+        .get(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("sec")
         .await;
     g1.assert_status_ok();
@@ -137,7 +137,7 @@ async fn txn_set_and_delete_atomic() {
 
     let g2 = ctx
         .server
-        .get(&format!("/{bid}/k2"))
+        .get(&format!("/api/v1/{bid}/k2"))
         .authorization_bearer("sec")
         .await;
     g2.assert_status_not_found();
@@ -151,7 +151,7 @@ async fn txn_set_with_ttl_expires() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "kt", "value": "z", "ttl": 1 }]
@@ -163,7 +163,7 @@ async fn txn_set_with_ttl_expires() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/kt"))
+        .get(&format!("/api/v1/{bid}/kt"))
         .authorization_bearer("r")
         .await;
     get.assert_status_not_found();
@@ -178,7 +178,7 @@ async fn txn_invalid_key_too_long_returns_400() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": long_key, "value": "v" }]
@@ -195,7 +195,7 @@ async fn txn_malformed_json_is_rejected() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .content_type("application/json")
         .bytes(Bytes::from("not-json"))
@@ -211,7 +211,7 @@ async fn txn_requires_write_for_set() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("r")
         .json(&json!({
             "txn": [{ "set": "k", "value": "x" }]
@@ -228,7 +228,7 @@ async fn txn_requires_delete_permission() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "delete": "k" }]
@@ -264,7 +264,7 @@ async fn txn_scoped_token_prefix_enforced_on_set() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer(token)
         .json(&json!({
             "txn": [{ "set": "y:k", "value": "1" }]
@@ -286,7 +286,7 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
         .await;
 
     ctx.server
-        .put(&format!("/{bid}/scope:seed"))
+        .put(&format!("/api/v1/{bid}/scope:seed"))
         .authorization_bearer("sec")
         .text("orig")
         .await
@@ -309,7 +309,7 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer(token)
         .json(&json!({
             "txn": [
@@ -323,14 +323,14 @@ async fn txn_no_partial_mutation_when_later_op_fails_authz() {
 
     let g_new = ctx
         .server
-        .get(&format!("/{bid}/scope:newk"))
+        .get(&format!("/api/v1/{bid}/scope:newk"))
         .authorization_bearer(token)
         .await;
     g_new.assert_status_not_found();
 
     let g_seed = ctx
         .server
-        .get(&format!("/{bid}/scope:seed"))
+        .get(&format!("/api/v1/{bid}/scope:seed"))
         .authorization_bearer(token)
         .await;
     g_seed.assert_status_ok();
@@ -351,7 +351,7 @@ async fn txn_set_value_json_scalar_becomes_json(#[case] value: Value, #[case] ex
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "k", "value": value }]
@@ -361,7 +361,7 @@ async fn txn_set_value_json_scalar_becomes_json(#[case] value: Value, #[case] ex
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/k"))
+        .get(&format!("/api/v1/{bid}/k"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -377,7 +377,7 @@ async fn txn_set_value_object_becomes_json() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "o", "value": payload }]
@@ -387,7 +387,7 @@ async fn txn_set_value_object_becomes_json() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/o"))
+        .get(&format!("/api/v1/{bid}/o"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -402,7 +402,7 @@ async fn txn_set_value_array_becomes_json() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "a", "value": [1, 2, 3] }]
@@ -412,7 +412,7 @@ async fn txn_set_value_array_becomes_json() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/a"))
+        .get(&format!("/api/v1/{bid}/a"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -429,7 +429,7 @@ async fn txn_set_value_utf8_string_preserved() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "s", "value": "olá" }]
@@ -439,7 +439,7 @@ async fn txn_set_value_utf8_string_preserved() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/s"))
+        .get(&format!("/api/v1/{bid}/s"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -456,7 +456,7 @@ async fn txn_set_value_numeric_string_stays_plaintext() {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&json!({
             "txn": [{ "set": "n", "value": "42" }]
@@ -466,7 +466,7 @@ async fn txn_set_value_numeric_string_stays_plaintext() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/n"))
+        .get(&format!("/api/v1/{bid}/n"))
         .authorization_bearer("r")
         .await;
     get.assert_status_ok();
@@ -491,7 +491,7 @@ async fn txn_rejects_invalid_item_shapes(#[case] payload: Value) {
 
     let res = ctx
         .server
-        .post(&format!("/{bid}"))
+        .post(&format!("/api/v1/{bid}"))
         .authorization_bearer("w")
         .json(&payload)
         .await;

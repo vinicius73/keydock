@@ -1,4 +1,4 @@
-//! Bucket key listing (`GET /{bucket}/`).
+//! Bucket key listing (`GET /api/v1/{bucket}/`).
 
 use axum::http::StatusCode;
 use axum::http::header;
@@ -12,7 +12,7 @@ async fn list_empty_bucket_json() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     let list = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .add_header(header::ACCEPT, "application/json")
         .await;
     list.assert_status_ok();
@@ -25,12 +25,12 @@ async fn list_keys_lexicographic_json() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     for k in ["c", "a", "b"] {
-        let p = format!("/{bid}/{k}");
+        let p = format!("/api/v1/{bid}/{k}");
         ctx.server.post(&p).text("1").await.assert_status_ok();
     }
     let list = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .add_header(header::ACCEPT, "application/json")
         .await;
     list.assert_status_ok();
@@ -43,14 +43,14 @@ async fn list_reverse_true() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     for k in ["a", "b", "c"] {
         ctx.server
-            .post(&format!("/{bid}/{k}"))
+            .post(&format!("/api/v1/{bid}/{k}"))
             .text("1")
             .await
             .assert_status_ok();
     }
     let list = ctx
         .server
-        .get(&format!("/{bid}/?reverse=true"))
+        .get(&format!("/api/v1/{bid}/?reverse=true"))
         .add_header(header::ACCEPT, "application/json")
         .await;
     list.assert_status_ok();
@@ -63,14 +63,14 @@ async fn list_prefix_filter() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     for k in ["foo:1", "foo:2", "bar:1"] {
         ctx.server
-            .post(&format!("/{bid}/{k}"))
+            .post(&format!("/api/v1/{bid}/{k}"))
             .text("x")
             .await
             .assert_status_ok();
     }
     let list = ctx
         .server
-        .get(&format!("/{bid}/?prefix=foo%3A"))
+        .get(&format!("/api/v1/{bid}/?prefix=foo%3A"))
         .add_header(header::ACCEPT, "application/json")
         .await;
     list.assert_status_ok();
@@ -83,14 +83,14 @@ async fn list_skip_limit() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     for k in ["k0", "k1", "k2", "k3"] {
         ctx.server
-            .post(&format!("/{bid}/{k}"))
+            .post(&format!("/api/v1/{bid}/{k}"))
             .text("1")
             .await
             .assert_status_ok();
     }
     let list = ctx
         .server
-        .get(&format!("/{bid}/?limit=2&skip=1"))
+        .get(&format!("/api/v1/{bid}/?limit=2&skip=1"))
         .add_header(header::ACCEPT, "application/json")
         .await;
     list.assert_status_ok();
@@ -102,13 +102,13 @@ async fn list_values_text_format() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     ctx.server
-        .post(&format!("/{bid}/k1"))
+        .post(&format!("/api/v1/{bid}/k1"))
         .text("hello")
         .await
         .assert_status_ok();
     let list = ctx
         .server
-        .get(&format!("/{bid}/?values=true&format=text"))
+        .get(&format!("/api/v1/{bid}/?values=true&format=text"))
         .await;
     list.assert_status_ok();
     list.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
@@ -121,7 +121,7 @@ async fn list_values_json_native_json_value() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     let body = r#"{"a":1}"#;
     ctx.server
-        .post(&format!("/{bid}/jk"))
+        .post(&format!("/api/v1/{bid}/jk"))
         .content_type("application/json")
         .text(body)
         .await
@@ -129,7 +129,7 @@ async fn list_values_json_native_json_value() {
 
     let list = ctx
         .server
-        .get(&format!("/{bid}/?values=true&format=json"))
+        .get(&format!("/api/v1/{bid}/?values=true&format=json"))
         .await;
     list.assert_status_ok();
     list.assert_header(header::CONTENT_TYPE, "application/json");
@@ -142,14 +142,14 @@ async fn list_values_jsonl() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     ctx.server
-        .post(&format!("/{bid}/x"))
+        .post(&format!("/api/v1/{bid}/x"))
         .text("42")
         .await
         .assert_status_ok();
 
     let list = ctx
         .server
-        .get(&format!("/{bid}/?values=true&format=jsonl"))
+        .get(&format!("/api/v1/{bid}/?values=true&format=jsonl"))
         .await;
     list.assert_status_ok();
     list.assert_header(header::CONTENT_TYPE, "application/x-ndjson");
@@ -163,7 +163,7 @@ async fn list_invalid_format_returns_406() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
     let res = ctx
         .server
-        .get(&format!("/{bid}/?format=not-a-format"))
+        .get(&format!("/api/v1/{bid}/?format=not-a-format"))
         .await;
     res.assert_status(StatusCode::NOT_ACCEPTABLE);
     res.assert_json(&api_error_body_json(406, "not_acceptable"));
@@ -173,7 +173,7 @@ async fn list_invalid_format_returns_406() {
 async fn list_restricted_bucket_anonymous_returns_401() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
-    let res = ctx.server.get(&format!("/{bid}/")).await;
+    let res = ctx.server.get(&format!("/api/v1/{bid}/")).await;
     res.assert_status_unauthorized();
     res.assert_json(&api_error_body_json(401, "unauthorized"));
 }
@@ -187,25 +187,25 @@ async fn list_text_format_escapes_only_newline_and_carriage_return() {
     let bid = ctx.create_bucket(BucketSetup::public()).await;
 
     ctx.server
-        .post(&format!("/{bid}/nl"))
+        .post(&format!("/api/v1/{bid}/nl"))
         .text("a\nb")
         .await
         .assert_status_ok();
     ctx.server
-        .post(&format!("/{bid}/cr"))
+        .post(&format!("/api/v1/{bid}/cr"))
         .text("a\rb")
         .await
         .assert_status_ok();
     // A single literal backslash followed by 'n'; must NOT become `\\n`.
     ctx.server
-        .post(&format!("/{bid}/bs"))
+        .post(&format!("/api/v1/{bid}/bs"))
         .text("a\\nb")
         .await
         .assert_status_ok();
 
     let list = ctx
         .server
-        .get(&format!("/{bid}/?values=true&format=text"))
+        .get(&format!("/api/v1/{bid}/?values=true&format=text"))
         .await;
     list.assert_status_ok();
     list.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
@@ -225,7 +225,7 @@ async fn list_with_read_key_returns_200_ok() {
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
     let res = ctx
         .server
-        .get(&format!("/{bid}/"))
+        .get(&format!("/api/v1/{bid}/"))
         .authorization_bearer("r")
         .await;
     res.assert_status_ok();

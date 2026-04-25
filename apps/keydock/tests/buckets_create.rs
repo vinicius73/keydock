@@ -48,7 +48,7 @@ async fn create_bucket_rejects_structurally_invalid_email(#[case] email: &str) {
 
     let response = ctx
         .server
-        .post("/")
+        .post("/api/v1")
         .bytes(Bytes::from(body))
         .content_type("application/x-www-form-urlencoded")
         .await;
@@ -85,7 +85,7 @@ async fn create_restricted_bucket() {
         })
         .await;
 
-    let response = ctx.server.get(&format!("/{bid}/k1")).await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/k1")).await;
     response.assert_status_unauthorized();
     response.assert_json(&json!({
         "error": {

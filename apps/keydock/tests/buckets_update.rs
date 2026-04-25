@@ -1,4 +1,4 @@
-//! `PATCH /{bucket}` policy updates.
+//! `PATCH /api/v1/{bucket}` policy updates.
 //!
 //! These tests pin the JSON PATCH contract:
 //! - absent field  → no-op
@@ -6,7 +6,7 @@
 //! - value         → set/rotate
 //! - empty string  → `400 bad_request` (silent no-ops forbidden)
 //!
-//! Observability of the mutation goes through `GET /{bucket}` (public
+//! Observability of the mutation goes through `GET /api/v1/{bucket}` (public
 //! projection), so the assertions rely on the `has_*` flags and
 //! `signing_key_generation` rather than any private field.
 
@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 
 async fn get_policy(ctx: &TestContext, bucket_id: &str, bearer: &str) -> Value {
     ctx.server
-        .get(&format!("/{bucket_id}"))
+        .get(&format!("/api/v1/{bucket_id}"))
         .authorization_bearer(bearer)
         .await
         .json()
@@ -147,13 +147,13 @@ async fn patch_rotates_secret_key() {
     .assert_status(StatusCode::NO_CONTENT);
 
     ctx.server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .await
         .assert_status_unauthorized();
 
     ctx.server
-        .get(&format!("/{bid}"))
+        .get(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec2")
         .await
         .assert_status_ok();
@@ -226,7 +226,7 @@ async fn patch_rejects_unknown_field() {
 
     let response = ctx
         .server
-        .patch(&format!("/{bid}"))
+        .patch(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .json(&json!({ "unknown_field": "x" }))
         .await;
@@ -242,7 +242,7 @@ async fn patch_empty_body_is_noop() {
     let bid = ctx.create_bucket(BucketSetup::admin("sec")).await;
 
     ctx.server
-        .patch(&format!("/{bid}"))
+        .patch(&format!("/api/v1/{bid}"))
         .authorization_bearer("sec")
         .json(&json!({}))
         .await

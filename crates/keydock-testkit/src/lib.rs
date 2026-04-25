@@ -78,7 +78,7 @@ impl TestContext {
         }
     }
 
-    /// Creates a bucket via `POST /` and returns the bucket id (body text).
+    /// Creates a bucket via `POST /api/v1` and returns the bucket id (body text).
     pub async fn create_bucket(&self, setup: BucketSetup) -> String {
         buckets::create_bucket(&self.server, &setup).await
     }

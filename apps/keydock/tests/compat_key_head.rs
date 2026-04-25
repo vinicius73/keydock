@@ -1,6 +1,6 @@
-//! Compatibility tests for `HEAD /{bucket}/{key}`.
+//! Compatibility tests for `HEAD /api/v1/{bucket}/{key}`.
 //!
-//! HEAD shares every auth, TTL and content-type rule with `GET /{bucket}/{key}`
+//! HEAD shares every auth, TTL and content-type rule with `GET /api/v1/{bucket}/{key}`
 //! but drops the body. The cases below pin this equivalence so a regression
 //! (different auth, dropped `Content-Type`, missed TTL expiry) surfaces even
 //! when no GET test is touched.
@@ -17,7 +17,7 @@ async fn head_key_existing_returns_200_with_content_type_and_empty_body() {
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
 
     ctx.server
-        .put(&format!("/{bid}/k1"))
+        .put(&format!("/api/v1/{bid}/k1"))
         .authorization_bearer("w")
         .text("payload")
         .await
@@ -25,7 +25,7 @@ async fn head_key_existing_returns_200_with_content_type_and_empty_body() {
 
     let response = ctx
         .server
-        .method(Method::HEAD, &format!("/{bid}/k1"))
+        .method(Method::HEAD, &format!("/api/v1/{bid}/k1"))
         .authorization_bearer("r")
         .await;
     response.assert_status_ok();
@@ -40,7 +40,7 @@ async fn head_key_missing_returns_404() {
 
     let response = ctx
         .server
-        .method(Method::HEAD, &format!("/{bid}/missing"))
+        .method(Method::HEAD, &format!("/api/v1/{bid}/missing"))
         .authorization_bearer("r")
         .await;
     response.assert_status_not_found();
@@ -51,7 +51,10 @@ async fn head_key_anonymous_on_restricted_bucket_returns_401() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx.server.method(Method::HEAD, &format!("/{bid}/k1")).await;
+    let response = ctx
+        .server
+        .method(Method::HEAD, &format!("/api/v1/{bid}/k1"))
+        .await;
     response.assert_status_unauthorized();
 }
 
@@ -61,7 +64,7 @@ async fn head_key_json_content_type_matches_get() {
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
 
     ctx.server
-        .put(&format!("/{bid}/jk"))
+        .put(&format!("/api/v1/{bid}/jk"))
         .authorization_bearer("w")
         .content_type("application/json")
         .text(r#"{"ok":true}"#)
@@ -70,7 +73,7 @@ async fn head_key_json_content_type_matches_get() {
 
     let head = ctx
         .server
-        .method(Method::HEAD, &format!("/{bid}/jk"))
+        .method(Method::HEAD, &format!("/api/v1/{bid}/jk"))
         .authorization_bearer("r")
         .await;
     head.assert_status_ok();
@@ -78,7 +81,7 @@ async fn head_key_json_content_type_matches_get() {
 
     let get = ctx
         .server
-        .get(&format!("/{bid}/jk"))
+        .get(&format!("/api/v1/{bid}/jk"))
         .authorization_bearer("r")
         .await;
     get.assert_status(StatusCode::OK);

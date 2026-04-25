@@ -12,7 +12,6 @@ use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tracing::instrument;
-use utoipa::OpenApi;
 use utoipa_swagger_ui::SwaggerUi;
 
 use axum::middleware;
@@ -21,7 +20,7 @@ use axum_governor::GovernorLayer;
 
 use crate::error::method_not_allowed;
 use crate::middleware::metrics;
-use crate::openapi::ApiDoc;
+use crate::openapi::{API_PREFIX, openapi};
 use crate::routes::{buckets, health, keys, tokens, txn};
 
 /// Fallback for routes whose path matches but the HTTP method is not allowed.
@@ -57,7 +56,7 @@ pub fn build_router(
         .allow_headers(Any);
 
     let ops_routes = Router::new()
-        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", ApiDoc::openapi()))
+        .merge(SwaggerUi::new("/swagger-ui").url("/api-docs/openapi.json", openapi()))
         .route("/health", get(health::health_check))
         .route("/ready", get(health::readiness_check))
         .route(
@@ -118,7 +117,7 @@ pub fn build_router(
 
     Router::new()
         .merge(ops_routes)
-        .merge(api_routes)
+        .nest(API_PREFIX, api_routes)
         .layer(middleware::from_fn(metrics::track_http_metrics))
         .layer(TraceLayer::new_for_http())
         .layer(cors)
