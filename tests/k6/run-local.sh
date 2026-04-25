@@ -14,7 +14,7 @@ Usage:
   tests/k6/run-local.sh <scenario>
 
 Scenarios:
-  smoke | security | regression | contracts | load | all
+  smoke | security | regression | contracts | load | stress | all
 
 Environment variables:
   PORT        Port to bind (default: 18080)
@@ -24,6 +24,13 @@ Environment variables:
   WAIT_READY  1|0 (default: 1). When 1, probes GET /ready before running k6.
   K6_CLEANUP  1|0|true|false (default: false). When false, do not delete buckets at end of scenarios.
   ALL_SCENARIOS  Space-separated list when scenario=all (default: "smoke security regression contracts load")
+  LOAD_VUS    VUs for load scenario (default: 10; forced to 2 when running via all)
+  LOAD_DURATION  Duration for load scenario (default: 30s; forced to 2s when running via all)
+  STRESS_MAX_VUS  Peak VUs for stress scenario (default: 40)
+  STRESS_RAMP_UP  Ramp up duration for stress scenario (default: 15s)
+  STRESS_HOLD     Hold duration for stress scenario (default: 15s)
+  STRESS_RAMP_DOWN  Ramp down duration for stress scenario (default: 10s)
+  STRESS_ABORT_TRANSPORT_ERRORS  Abort stress after N transport errors in a row (default: 25)
   K6_MODE     auto|local|docker|docker-exec (default: auto)
   K6_BIN      Override k6 binary (default: k6)
   DOCKER_BIN  Override docker binary (default: docker)
@@ -137,9 +144,9 @@ validate_scenario_name() {
   local value="$1"
 
   case "${value}" in
-    smoke | security | regression | contracts | load | all) ;;
+    smoke | security | regression | contracts | load | stress | all) ;;
     *)
-      die "unknown scenario '${value}' (expected: smoke|security|regression|contracts|load|all)"
+      die "unknown scenario '${value}' (expected: smoke|security|regression|contracts|load|stress|all)"
       ;;
   esac
 }
@@ -296,6 +303,11 @@ k6_run() {
         -e K6_SUMMARY_TEXT \
         -e LOAD_VUS \
         -e LOAD_DURATION \
+        -e STRESS_MAX_VUS \
+        -e STRESS_RAMP_UP \
+        -e STRESS_HOLD \
+        -e STRESS_RAMP_DOWN \
+        -e STRESS_ABORT_TRANSPORT_ERRORS \
         -v "${PWD}:/work:${K6_MOUNT}" \
         -v "${PWD}/${K6_SUMMARY_DIR}:/work/${K6_SUMMARY_DIR}:rw" \
         -w /work \
@@ -311,6 +323,11 @@ k6_run() {
         -e K6_SUMMARY_TEXT \
         -e LOAD_VUS \
         -e LOAD_DURATION \
+        -e STRESS_MAX_VUS \
+        -e STRESS_RAMP_UP \
+        -e STRESS_HOLD \
+        -e STRESS_RAMP_DOWN \
+        -e STRESS_ABORT_TRANSPORT_ERRORS \
         -w "${K6_WORKDIR}" \
         "${K6_CONTAINER}" \
         k6 run "${k6_args[@]}" "${script_path}"

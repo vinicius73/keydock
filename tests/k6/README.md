@@ -87,6 +87,7 @@ Notes for `docker-exec`:
 - `regression`: light concurrency + isolation checks
 - `contracts`: explicit request/response contract suite (types, headers, error envelopes)
 - `load`: opt-in baseline load (not meant to run on every CI job)
+- `stress`: opt-in stress profile (ramps VUs to find saturation; not included in `all` by default)
 - `all`: runs multiple scenarios in sequence (configurable via `ALL_SCENARIOS`)
 
 Each scenario tags requests with stable `name`, `scenario`, and `flow` values. Dynamic bucket IDs and
@@ -115,6 +116,13 @@ The harness supports a few knobs:
 - `WAIT_READY`: `1|0` (default: `1`)
 - `K6_CLEANUP`: `1|0|true|false` (default: `false`). When false, scenarios skip bucket deletion at the end.
 - `ALL_SCENARIOS`: space-separated list for `all` (default: `smoke security regression contracts load`)
+- `LOAD_VUS`: VUs for the `load` scenario (default: `10`, or `2` when running via `all`)
+- `LOAD_DURATION`: duration for the `load` scenario (default: `30s`, or `2s` when running via `all`)
+- `STRESS_MAX_VUS`: peak VUs for the `stress` scenario (default: `40`)
+- `STRESS_RAMP_UP`: ramp up duration for `stress` (default: `15s`)
+- `STRESS_HOLD`: hold duration for `stress` (default: `15s`)
+- `STRESS_RAMP_DOWN`: ramp down duration for `stress` (default: `10s`)
+- `STRESS_ABORT_TRANSPORT_ERRORS`: abort `stress` after N transport errors in a row (default: `25`)
 - `K6_BIN`: override k6 binary (default: `k6`)
 - `DOCKER_BIN`: override docker binary (default: `docker`) — set to `podman` if desired
 - `K6_IMAGE`: docker image for k6 (default: `grafana/k6:latest`)
@@ -140,6 +148,12 @@ Override the load baseline when running `all`:
 
 ```bash
 LOAD_VUS=10 LOAD_DURATION=30s tests/k6/run-local.sh all
+```
+
+Run `stress` with a more aggressive ramp:
+
+```bash
+STRESS_MAX_VUS=200 STRESS_RAMP_UP=30s STRESS_HOLD=30s STRESS_RAMP_DOWN=15s tests/k6/run-local.sh stress
 ```
 
 Enable cleanup at the end of each scenario:
