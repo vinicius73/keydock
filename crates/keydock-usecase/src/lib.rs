@@ -3,6 +3,7 @@
 //! Application layer: use cases and ports (no Axum, no Fjall).
 
 pub mod auth;
+mod crypto;
 mod ct;
 pub mod error;
 pub mod keys;

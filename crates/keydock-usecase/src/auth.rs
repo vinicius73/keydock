@@ -1,15 +1,11 @@
 //! Credential resolution: direct key hashes and HMAC-signed temporary tokens.
 
-use hmac::Mac;
-use hmac::digest::KeyInit;
 use keydock_domain::{BucketId, BucketPolicy, Permission, SigningKey};
 use secrecy::ExposeSecret;
-use sha2::Sha256;
 use time::OffsetDateTime;
 
+use crate::crypto;
 use crate::{AuthError, tokens};
-
-type HmacSha256 = hmac::Hmac<Sha256>;
 
 /// Identity after resolving HTTP credentials against a bucket policy.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,7 +21,8 @@ pub enum ResolvedIdentity {
 /// Stores `HMAC-SHA256(root_key, raw_credential_bytes)` as bytes.
 #[tracing::instrument(skip_all)]
 pub fn hash_credential(raw: &str, root_key: &SigningKey) -> Result<Vec<u8>, AuthError> {
-    hmac_sha256(root_key.expose_secret(), raw.as_bytes())
+    crypto::hmac_sha256(root_key.expose_secret(), raw.as_bytes())
+        .map_err(|crypto::HmacError::InvalidKey| AuthError::InvalidKeyMaterial)
 }
 
 /// Constant-time compare of presented credential against stored hash.
@@ -85,12 +82,6 @@ pub fn resolve(
         permissions: claims.permissions,
         key_prefix: claims.allowed_prefix,
     })
-}
-
-fn hmac_sha256(key: &[u8], data: &[u8]) -> Result<Vec<u8>, AuthError> {
-    let mut mac = HmacSha256::new_from_slice(key).map_err(|_| AuthError::InvalidKeyMaterial)?;
-    mac.update(data);
-    Ok(mac.finalize().into_bytes().to_vec())
 }
 
 #[cfg(test)]
