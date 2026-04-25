@@ -600,6 +600,15 @@ Run the project QA flow when available:
 just qa
 ```
 
+Black-box tests (k6) against a real compiled process:
+
+```bash
+tests/k6/run-local.sh smoke
+tests/k6/run-local.sh all
+```
+
+See `tests/k6/README.md` for Docker mode, running against an existing service, and other variations.
+
 ## License
 
 AGPL-3.0-only

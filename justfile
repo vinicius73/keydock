@@ -48,6 +48,10 @@ test pkg="":
 qa pkg="": fix
     just test {{ pkg }}
 
+[group('qa')]
+k6 scenario="all":
+    tests/k6/run-local.sh {{ scenario }}
+
 
 # --- Dev ---
 
@@ -58,6 +62,12 @@ run +ARGS="":
 [group('dev')]
 serve +ARGS="":
     cargo run -p keydock -- serve {{ ARGS }}
+
+[group('dev')]
+release-serve +ARGS="":
+    cargo build -p keydock --release
+    if [ ! -f .local/keydock.toml ]; then target/release/keydock init .local; fi
+    target/release/keydock serve -c .local/keydock.toml {{ ARGS }}
 
 [group('dev')]
 serve-watch +ARGS="":

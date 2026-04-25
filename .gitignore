@@ -2,3 +2,4 @@
 /data
 /_docs
 /.local
+/tests/k6/results
