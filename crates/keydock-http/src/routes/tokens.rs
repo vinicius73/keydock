@@ -14,8 +14,10 @@ use crate::extract::BucketAuth;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateTokenForm {
-    pub prefix: Option<String>,
+    /// Required non-empty prefix scope for the minted token.
+    pub prefix: String,
     pub permissions: String,
+    /// TTL seconds from `now`. Must be strictly positive; `<= 0` is rejected.
     pub ttl: i64,
 }
 
@@ -82,17 +84,24 @@ pub async fn create_token(
         .as_ref()
         .ok_or_else(service_unavailable)?;
 
+    // `ttl` is seconds-from-now and must be strictly positive.
+    // Negative or zero values would mint a token whose `exp <= iat`, which
+    // `tokens::verify` later rejects as expired, so clients would receive a
+    // `200 OK` for a token guaranteed to fail on first use.
+    if form.ttl <= 0 {
+        return Err(bad_request());
+    }
+    if form.prefix.is_empty() {
+        return Err(bad_request());
+    }
+
     let now = state.clock().now_utc();
     let exp = now
         .checked_add(Duration::seconds(form.ttl))
         .ok_or_else(bad_request)?;
 
     let permissions = parse_permissions(&form.permissions)?;
-    let allowed_prefix = form
-        .prefix
-        .filter(|s| !s.is_empty())
-        .map(|s| s.into_bytes())
-        .unwrap_or_default();
+    let allowed_prefix = form.prefix.into_bytes();
 
     let claims = TemporaryTokenClaims {
         version: 1,

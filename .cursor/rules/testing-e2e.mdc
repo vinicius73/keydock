@@ -41,7 +41,7 @@ Use `keydock_testkit::BucketSetup` with `Default` + named constructors for commo
 
 For one-off cases, use struct update syntax: `BucketSetup { email: "x@example.com".into(), ..BucketSetup::signed("sec", "sign") }`.
 
-Token helpers: `TokenSetup::read(ttl)`, `TokenSetup::read_prefixed(prefix, ttl)`, `TokenSetup::expired()`; policy updates: `PolicyPatch::rotate_signing_key("new")`.
+Token helpers: `TokenSetup::read(prefix, ttl)` (both required; pass `""` or `0`/negative TTL to drive `400` rejection paths) and `TestContext::mint_expired_read_token(bucket_id, signing_secret)` for negative checks that need an already-expired token; policy updates: `PolicyPatch::rotate_signing_key("new")`.
 
 ## HTTP surface stays explicit in tests
 

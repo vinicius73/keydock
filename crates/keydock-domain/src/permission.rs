@@ -14,6 +14,10 @@ impl Permission {
 
     pub const READ_ONLY: Self = Self::new(true, false, false, false);
 
+    /// Read plus enumerate: identity derived from the bucket `read_key`
+    /// (listing is part of the read side).
+    pub const READ_ENUMERATE: Self = Self::new(true, false, true, false);
+
     pub const WRITE_ONLY: Self = Self::new(false, true, false, false);
 
     pub const ADMIN: Self = Self::new(true, true, true, true);
