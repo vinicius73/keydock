@@ -1282,7 +1282,6 @@ dependencies = [
  "keydock-support",
  "keydock-testkit",
  "keydock-usecase",
- "lazy-limit",
  "lexopt",
  "metrics-exporter-prometheus",
  "pretty_assertions",
@@ -1319,15 +1318,12 @@ name = "keydock-domain"
 version = "0.1.0-alpha"
 dependencies = [
  "bytes",
- "hmac",
  "pretty_assertions",
  "rstest",
  "secrecy",
  "serde",
- "sha2 0.11.0",
  "thiserror 2.0.18",
  "time",
- "zeroize",
 ]
 
 [[package]]
@@ -1361,11 +1357,11 @@ dependencies = [
  "base64",
  "bytes",
  "http-body-util",
- "keydock-config",
  "keydock-domain",
  "keydock-state",
  "keydock-support",
  "keydock-usecase",
+ "lazy-limit",
  "metrics",
  "metrics-exporter-prometheus",
  "percent-encoding",
@@ -1401,10 +1397,7 @@ dependencies = [
 name = "keydock-support"
 version = "0.1.0-alpha"
 dependencies = [
- "secrecy",
- "thiserror 2.0.18",
  "time",
- "zeroize",
 ]
 
 [[package]]
@@ -3492,20 +3485,6 @@ name = "zeroize"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b97154e67e32c85465826e8bcc1c59429aaaf107c1e4a9e53c8d8ccd5eff88d0"
-dependencies = [
- "zeroize_derive",
-]
-
-[[package]]
-name = "zeroize_derive"
-version = "1.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85a5b4158499876c763cb03bc4e49185d3cccbabb15b33c627f7884f43db852e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "zerotrie"
