@@ -45,7 +45,7 @@ export function readRequestOptions(options: OperationOptions | undefined): KyOpt
 
 export function writeRequestOptions(options: OperationOptions | undefined): KyOptions {
   return {
-    ...(options?.request ?? {}),
+    ...options?.request,
     retry: NO_RETRY,
   } as KyOptions;
 }

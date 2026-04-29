@@ -9,7 +9,11 @@
       "import": "./dist/index.js"
     }
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -17,14 +21,19 @@
     "ky": "^1.9.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "latest",
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.62.0",
     "typescript": "latest"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.json",
     "test": "bun test",
-    "fmt": "biome check --write .",
-    "qa": "bun run fmt && bun run typecheck && bun test"
+    "fmt": "oxfmt --write src test",
+    "fmt:check": "oxfmt --check src test",
+    "lint": "oxlint src test",
+    "lint:fix": "oxlint src test --fix",
+    "fix": "bun run fmt && bun run lint:fix",
+    "qa": "bun run fmt:check && bun run lint && bun run typecheck && bun test"
   }
 }
