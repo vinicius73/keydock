@@ -100,4 +100,5 @@ Each test uses unique bucket data and cleans up buckets best-effort after assert
 
 - TODO(D3): Confirm whether numeric text such as `setText("42")` should continue to be inferred by the backend as an integer while still roundtripping through SDK text reads.
 - TODO(D4): Confirm whether JSON-looking text such as `setText('{"a":1}')` should continue to be inferred by the backend as JSON while still roundtripping through SDK text reads.
+- TODO(D5): Document clearly that a bucket with only `secretKey` configured allows anonymous read, write, and enumerate operations, while anonymous delete remains unauthenticated and returns `401`; configure `readKey` and `writeKey` to restrict public access.
 - TODO(D7): Decide whether SDK `getJsonOrNull` should distinguish a stored JSON `null` from a missing key, because both currently resolve to `null`.
