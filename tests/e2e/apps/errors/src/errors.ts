@@ -21,7 +21,11 @@ mountE2eApp({
     "Real server errors are normalized into the SDK error classes the browser app receives.",
   steps: [
     { id: "missing-key-result", label: "Missing Key" },
+    { id: "missing-key-code", label: "Missing Key Code" },
+    { id: "missing-key-detail", label: "Missing Key Detail" },
     { id: "invalid-bucket-result", label: "Invalid Bucket" },
+    { id: "invalid-bucket-code", label: "Invalid Bucket Code" },
+    { id: "invalid-bucket-detail", label: "Invalid Bucket Detail" },
   ],
 });
 
@@ -41,6 +45,8 @@ async function run(): Promise<void> {
     appendLog("triggering missing key error");
     const missing = await captureKeydockError(() => client.bucket(bucketId).getJson(missingKey));
     setStep("missing-key-result", "done", `${missing.name}:${missing.status}`);
+    setStep("missing-key-code", "done", String(missing.code));
+    setStep("missing-key-detail", "done", missing.detail);
     setText("error-name", missing.name);
     setText("error-status", String(missing.status));
     setText("error-detail", missing.detail);
@@ -50,6 +56,8 @@ async function run(): Promise<void> {
       client.bucket(invalidBucketId).getText("anything"),
     );
     setStep("invalid-bucket-result", "done", `${invalidBucket.name}:${invalidBucket.status}`);
+    setStep("invalid-bucket-code", "done", String(invalidBucket.code));
+    setStep("invalid-bucket-detail", "done", invalidBucket.detail);
 
     setStatus("done", "done");
   } catch (error) {

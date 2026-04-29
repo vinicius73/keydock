@@ -18,6 +18,7 @@ export default defineConfig({
         "auth-matrix": resolve(import.meta.dirname, "apps/auth-matrix/index.html"),
         "policy-golden": resolve(import.meta.dirname, "apps/policy-golden/index.html"),
         "tokens-golden": resolve(import.meta.dirname, "apps/tokens-golden/index.html"),
+        "ttl-counters": resolve(import.meta.dirname, "apps/ttl-counters/index.html"),
       },
     },
   },

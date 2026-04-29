@@ -20,10 +20,13 @@ mountE2eApp({
     { id: "set-result", label: "Write" },
     { id: "get-result", label: "Read Text" },
     { id: "json-result", label: "Read JSON" },
+    { id: "bytes-result", label: "Read Bytes" },
     { id: "exists-result", label: "Exists" },
     { id: "list-result", label: "List" },
+    { id: "list-entries-result", label: "List Entries" },
     { id: "delete-result", label: "Delete" },
     { id: "post-delete-exists-result", label: "Exists After Delete" },
+    { id: "post-delete-null-result", label: "Null After Delete" },
   ],
 });
 
@@ -75,6 +78,7 @@ async function run(): Promise<void> {
     setStep("set-result", "running", "writing values");
     await writeBucket.setText("message", "hello from browser");
     await writeBucket.setJson("profile", { name: "Ana", ok: true });
+    await writeBucket.setBytes("blob", new Uint8Array([1, 2, 3]));
     setStep("set-result", "done", "values written");
 
     const text = await readBucket.getText("message");
@@ -83,17 +87,26 @@ async function run(): Promise<void> {
     const json = await readBucket.getJson<{ name: string; ok: boolean }>("profile");
     setStep("json-result", "done", `${json.name}:${String(json.ok)}`);
 
+    const bytes = await readBucket.getBytes("blob");
+    setStep("bytes-result", "done", bytes.join(","));
+
     const exists = await readBucket.exists("message");
     setStep("exists-result", "done", String(exists));
 
     const keys = await adminBucket.listKeys({ reverse: false });
     setStep("list-result", "done", keys.join(","));
 
+    const entries = await adminBucket.listEntries({ prefix: "" });
+    setStep("list-entries-result", "done", entries.map((entry) => entry.key).join(","));
+
     await adminBucket.delete("message");
     setStep("delete-result", "done", "message deleted");
 
     const existsAfterDelete = await readBucket.exists("message");
     setStep("post-delete-exists-result", "done", String(existsAfterDelete));
+
+    const valueAfterDelete = await readBucket.getTextOrNull("message");
+    setStep("post-delete-null-result", "done", String(valueAfterDelete));
 
     await admin.buckets.delete(created.id);
     appendLog("bucket deleted");

@@ -22,6 +22,7 @@ test.describe("scoped token SDK browser flow", () => {
   test("allows prefixed reads and rejects out-of-scope reads", async ({ page }) => {
     fixture = await createBucket(uniqueBucketData("scoped"));
     const scopedKey = randomKey("scope:profile");
+    const writeScopedKey = randomKey("scope:write");
     const outsideKey = randomKey("private:profile");
     const adminBucket = createClient(fixture.credentials.secretKey).bucket(fixture.id);
 
@@ -32,13 +33,19 @@ test.describe("scoped token SDK browser flow", () => {
       prefix: "scope:",
       permissions: ["read"],
     });
+    const writeToken = await createScopedToken(fixture.id, fixture.credentials.secretKey, {
+      prefix: "scope:",
+      permissions: ["write"],
+    });
     const config: KeydockE2eConfig = {
       url: e2eBaseUrl(),
       bucketId: fixture.id,
       auth: token,
       keys: {
         scopedKey,
+        writeScopedKey,
         outsideKey,
+        writeToken,
       },
     };
 
@@ -52,6 +59,8 @@ test.describe("scoped token SDK browser flow", () => {
     await expect(page.getByTestId("bucket-id")).toHaveText(fixture.id);
     await expect(page.getByTestId("scoped-read-result")).toHaveText("visible-through-token");
     await expect(page.getByTestId("outside-scope-result")).toHaveText("KeydockError:403");
+    await expect(page.getByTestId("write-token-write-result")).toHaveText("ok");
+    await expect(page.getByTestId("write-token-read-result")).toHaveText("KeydockError:403");
     await expect(page.getByTestId("error-name")).toHaveText("KeydockError");
     await expect(page.getByTestId("error-status")).toHaveText("403");
   });

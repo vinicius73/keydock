@@ -22,6 +22,8 @@ mountE2eApp({
   steps: [
     { id: "scoped-read-result", label: "Scoped Read" },
     { id: "outside-scope-result", label: "Outside Scope" },
+    { id: "write-token-write-result", label: "Write Token Write" },
+    { id: "write-token-read-result", label: "Write Token Read" },
   ],
 });
 
@@ -35,6 +37,8 @@ async function run(): Promise<void> {
     const token = requireAuth(config);
     const scopedKey = requireKey(config, "scopedKey");
     const outsideKey = requireKey(config, "outsideKey");
+    const writeToken = requireKey(config, "writeToken");
+    const writeScopedKey = requireKey(config, "writeScopedKey");
     const client = createKeydock({ baseUrl: config.url, auth: token });
     const bucket = client.bucket(bucketId);
 
@@ -58,8 +62,28 @@ async function run(): Promise<void> {
       setStep("outside-scope-result", "done", `${error.name}:${error.status}`);
     }
 
+    const writeBucket = createKeydock({ baseUrl: config.url, auth: writeToken }).bucket(bucketId);
+    await writeBucket.setText(writeScopedKey, "written-through-token");
+    setStep("write-token-write-result", "done", "ok");
+
+    const writeReadError = await captureKeydockError(() => writeBucket.getText(writeScopedKey));
+    setStep("write-token-read-result", "done", `${writeReadError.name}:${writeReadError.status}`);
+
     setStatus("done", "done");
   } catch (error) {
     renderError(error);
   }
+}
+
+async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
+  try {
+    await operation();
+  } catch (error) {
+    if (error instanceof KeydockError) {
+      return error;
+    }
+    throw error;
+  }
+
+  throw new Error("expected operation to fail with KeydockError");
 }

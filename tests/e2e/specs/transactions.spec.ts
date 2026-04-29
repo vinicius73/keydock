@@ -24,6 +24,13 @@ test.describe("transaction SDK browser flow", () => {
     const secondKey = randomKey("txn:second");
     const deletedKey = randomKey("txn:deleted");
     const counterKey = randomKey("txn:counter");
+    const jsonIntegerKey = randomKey("txn:json-integer");
+    const jsonBooleanKey = randomKey("txn:json-boolean");
+    const jsonArrayKey = randomKey("txn:json-array");
+    const stringNumericKey = randomKey("txn:string-numeric");
+    const ttlKey = randomKey("txn:ttl");
+    const partialSetKey = randomKey("partial:set");
+    const partialDeleteKey = randomKey("partial:delete");
     const bucket = createClient(fixture.credentials.secretKey).bucket(fixture.id);
 
     await bucket.setText(deletedKey, "will-be-deleted");
@@ -37,6 +44,13 @@ test.describe("transaction SDK browser flow", () => {
         secondKey,
         deletedKey,
         counterKey,
+        jsonIntegerKey,
+        jsonBooleanKey,
+        jsonArrayKey,
+        stringNumericKey,
+        ttlKey,
+        partialSetKey,
+        partialDeleteKey,
       },
     };
 
@@ -58,5 +72,12 @@ test.describe("transaction SDK browser flow", () => {
       "integer",
     );
     await expect(page.getByTestId("counter-result")).toHaveAttribute("data-counter-number", "1");
+    await expect(page.getByTestId("txn-json-integer")).toHaveText("42");
+    await expect(page.getByTestId("txn-json-boolean")).toHaveText("true");
+    await expect(page.getByTestId("txn-json-array")).toHaveText("[1,2,3]");
+    await expect(page.getByTestId("txn-string-numeric")).toHaveText("42");
+    await expect(page.getByTestId("txn-ttl-per-item")).toHaveText("null");
+    await expect(page.getByTestId("txn-no-partial-mutation")).toHaveText("KeydockError:403:null");
+    await expect(page.getByTestId("txn-empty-sdk-rejected")).toHaveText("KeydockValidationError");
   });
 });

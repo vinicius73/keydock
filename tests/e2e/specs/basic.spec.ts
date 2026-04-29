@@ -53,11 +53,16 @@ test.describe("basic SDK browser roundtrip", () => {
     await expect(page.getByTestId("set-result")).toHaveText("values written");
     await expect(page.getByTestId("get-result")).toHaveText("hello from browser");
     await expect(page.getByTestId("json-result")).toHaveText("Ana:true");
+    await expect(page.getByTestId("bytes-result")).toHaveText("1,2,3");
     await expect(page.getByTestId("exists-result")).toHaveText("true");
     await expect(page.getByTestId("list-result")).toContainText("message");
     await expect(page.getByTestId("list-result")).toContainText("profile");
+    await expect(page.getByTestId("list-entries-result")).toContainText("blob");
+    await expect(page.getByTestId("list-entries-result")).toContainText("message");
+    await expect(page.getByTestId("list-entries-result")).toContainText("profile");
     await expect(page.getByTestId("delete-result")).toHaveText("message deleted");
     await expect(page.getByTestId("post-delete-exists-result")).toHaveText("false");
+    await expect(page.getByTestId("post-delete-null-result")).toHaveText("null");
 
     const bucketId = await page.getByTestId("bucket-id").textContent();
     if (bucketId !== null && bucketId !== "not-created") {

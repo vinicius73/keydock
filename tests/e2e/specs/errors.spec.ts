@@ -37,8 +37,13 @@ test.describe("SDK browser error mapping", () => {
 
     await expect(page.getByTestId("app-status")).toHaveText("done");
     await expect(page.getByTestId("missing-key-result")).toHaveText("KeydockError:404");
+    await expect(page.getByTestId("missing-key-code")).toHaveText("404");
+    await expect(page.getByTestId("missing-key-detail")).not.toHaveText("");
     await expect(page.getByTestId("invalid-bucket-result")).toHaveText("KeydockError:404");
+    await expect(page.getByTestId("invalid-bucket-code")).toHaveText("404");
+    await expect(page.getByTestId("invalid-bucket-detail")).not.toHaveText("");
     await expect(page.getByTestId("error-name")).toHaveText("KeydockError");
     await expect(page.getByTestId("error-status")).toHaveText("404");
+    await expect(page.getByTestId("error-detail")).not.toHaveText("");
   });
 });
