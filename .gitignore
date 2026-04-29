@@ -10,3 +10,6 @@ coverage/
 /_docs
 /.local
 /tests/k6/results
+
+node_modules/
+**/node_modules
