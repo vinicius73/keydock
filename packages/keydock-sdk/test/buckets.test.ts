@@ -123,7 +123,9 @@ describe("bucket administration", () => {
         return Response.json({ error: { code: 404, message: "not_found" } }, { status: 404 });
       }
 
-      return new Response(null, { status: request.method === "DELETE" ? 204 : 200 });
+      return new Response(null, {
+        status: request.method === "DELETE" ? 204 : 200,
+      });
     });
 
     await expect(buckets.exists("bucket")).resolves.toBe(true);

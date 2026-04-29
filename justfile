@@ -61,6 +61,11 @@ qa pkg="": fix
 k6 scenario="all":
     tests/k6/run-local.sh {{ scenario }}
 
+[group('qa')]
+e2e:
+    cargo build -p keydock --release
+    cd tests/e2e && bun install && bun run install:browsers && bun run test
+
 
 # --- SDK ---
 
