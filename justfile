@@ -2,10 +2,19 @@ set dotenv-load := true
 
 export RUST_LOG := env_var_or_default('RUST_LOG', 'info')
 export RUST_BACKTRACE := env_var_or_default('RUST_BACKTRACE', '0')
+export PATH := env_var('HOME') + '/.cargo/bin:' + env_var('PATH')
 
 # Default: show available recipes
 default:
     @just --list
+
+setup: install-rust
+    rustup update
+    # Remove any directory override and let rust-toolchain.toml take precedence
+    rustup override unset || true
+    # Force rustup to detect and install toolchain from rust-toolchain.toml if needed
+    # Running cargo will make rustup automatically install the toolchain if not installed
+    @cargo --version >/dev/null
 
 
 # --- QA loop (repo convention) ---
@@ -95,3 +104,12 @@ nextest:
 [group('tools')]
 cov:
     cargo llvm-cov --workspace --all-targets --lcov --output-path target/lcov.info
+
+[private]
+install-rust:
+    command -v rustup >/dev/null || curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal
+    rustup toolchain install --profile minimal --component clippy --component rustfmt --component rust-analyzer
+    cargo binstall --help >/dev/null || curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+    rustc --version
+    cargo --version
+    cargo binstall -V
