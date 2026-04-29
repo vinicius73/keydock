@@ -3,8 +3,7 @@ import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/te
 type ScreenshotMode = NonNullable<PlaywrightTestConfig["use"]>["screenshot"];
 type VideoMode = NonNullable<PlaywrightTestConfig["use"]>["video"];
 
-const env =
-  (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+const env = process.env;
 const screenshot = readScreenshotMode(env.E2E_SCREENSHOT);
 const video = readVideoMode(env.E2E_VIDEO);
 

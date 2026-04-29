@@ -63,8 +63,10 @@ async function run(): Promise<void> {
     setStep("create-result", "done", "bucket created");
 
     const adminBucket = admin.bucket(created.id);
-    await adminBucket.setText("scope:k1", "ok");
-    await adminBucket.setText("other:k", "outside");
+    await Promise.all([
+      adminBucket.setText("scope:k1", "ok"),
+      adminBucket.setText("other:k", "outside"),
+    ]);
 
     const readToken = await adminBucket.tokens.create({
       prefix: "scope:",
@@ -97,8 +99,10 @@ async function run(): Promise<void> {
     const writeNoDelete = await captureKeydockError(() => writeBucket.delete("scope:write"));
     setStep("token-write-no-delete", "done", `${writeNoDelete.name}:${writeNoDelete.status}`);
 
-    await adminBucket.setText("scope:delete", "gone");
-    await adminBucket.setText("other:delete", "kept");
+    await Promise.all([
+      adminBucket.setText("scope:delete", "gone"),
+      adminBucket.setText("other:delete", "kept"),
+    ]);
     const deleteToken = await adminBucket.tokens.create({
       prefix: "scope:",
       permissions: ["delete"],

@@ -2,6 +2,7 @@ import { createKeydock } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
 import {
+  bucketCreateInput,
   captureKeydockError,
   createPublicBucket,
   publicBucketSecretKey,
@@ -65,13 +66,9 @@ async function run(): Promise<void> {
     });
 
     setStep("create-result", "running", "creating bucket");
-    const created = await anonymous.buckets.create({
-      email: credentials.email,
-      secretKey: credentials.secretKey,
-      readKey: credentials.readKey,
-      writeKey: credentials.writeKey,
-      defaultTtlSeconds: 0,
-    });
+    const created = await anonymous.buckets.create(
+      bucketCreateInput(credentials, { defaultTtlSeconds: 0 }),
+    );
     setText("bucket-id", created.id);
     setStep("create-result", "done", "bucket created");
 

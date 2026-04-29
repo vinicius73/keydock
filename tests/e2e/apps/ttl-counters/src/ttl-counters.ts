@@ -3,6 +3,7 @@ import type { CounterValue } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
 import {
+  bucketCreateInput,
   captureAnyError,
   captureKeydockError,
   sleep,
@@ -53,13 +54,9 @@ async function run(): Promise<void> {
       auth: credentials.secretKey,
     });
 
-    const created = await anonymous.buckets.create({
-      email: credentials.email,
-      secretKey: credentials.secretKey,
-      readKey: credentials.readKey,
-      writeKey: credentials.writeKey,
-      defaultTtlSeconds: 0,
-    });
+    const created = await anonymous.buckets.create(
+      bucketCreateInput(credentials, { defaultTtlSeconds: 0 }),
+    );
     setText("bucket-id", created.id);
     setStep("create-result", "done", "bucket created");
 

@@ -72,20 +72,22 @@ async function run(): Promise<void> {
 
     setStep("list-empty", "done", JSON.stringify(await readBucket.listKeys()));
 
-    await adminBucket.setText("c", "c");
-    await adminBucket.setText("a", "a");
-    await adminBucket.setText("b", "b");
+    await Promise.all([
+      adminBucket.setText("c", "c"),
+      adminBucket.setText("a", "a"),
+      adminBucket.setText("b", "b"),
+    ]);
     setStep("list-lexicographic", "done", (await readBucket.listKeys()).join(","));
     setStep("list-reverse", "done", (await readBucket.listKeys({ reverse: true })).join(","));
 
-    await adminBucket.setText("foo:1", "1");
-    await adminBucket.setText("foo:2", "2");
-    await adminBucket.setText("bar:1", "1");
+    await Promise.all([
+      adminBucket.setText("foo:1", "1"),
+      adminBucket.setText("foo:2", "2"),
+      adminBucket.setText("bar:1", "1"),
+    ]);
     setStep("list-prefix", "done", (await readBucket.listKeys({ prefix: "foo:" })).join(","));
 
-    for (const key of ["k0", "k1", "k2", "k3"]) {
-      await adminBucket.setText(key, key);
-    }
+    await Promise.all(["k0", "k1", "k2", "k3"].map((key) => adminBucket.setText(key, key)));
     setStep(
       "list-limit",
       "done",
@@ -97,8 +99,7 @@ async function run(): Promise<void> {
       (await readBucket.listKeys({ prefix: "k", skip: 1, limit: 2 })).join(","),
     );
 
-    await adminBucket.setText("msg", "hello");
-    await adminBucket.setJson("obj", { x: 1 });
+    await Promise.all([adminBucket.setText("msg", "hello"), adminBucket.setJson("obj", { x: 1 })]);
     const textEntry = (await readBucket.listEntries({ prefix: "msg" }))[0];
     const jsonEntry = (await readBucket.listEntries({ prefix: "obj" }))[0];
     setStep("listEntries-text", "done", `${textEntry?.key}=${String(textEntry?.value)}`);
@@ -126,9 +127,11 @@ async function run(): Promise<void> {
       }).buckets.delete(publicBucketId);
     }
 
-    await adminBucket.setText("scope:a", "a");
-    await adminBucket.setText("scope:b", "b");
-    await adminBucket.setText("other:a", "a");
+    await Promise.all([
+      adminBucket.setText("scope:a", "a"),
+      adminBucket.setText("scope:b", "b"),
+      adminBucket.setText("other:a", "a"),
+    ]);
     const scopedToken = await adminBucket.tokens.create({
       prefix: "scope:",
       permissions: ["enumerate"],
@@ -144,9 +147,11 @@ async function run(): Promise<void> {
       (await scopedBucket.listKeys({ prefix: "scope:" })).join(","),
     );
 
-    await adminBucket.setText("a:b1", "1");
-    await adminBucket.setText("a:c1", "1");
-    await adminBucket.setText("b:a1", "1");
+    await Promise.all([
+      adminBucket.setText("a:b1", "1"),
+      adminBucket.setText("a:c1", "1"),
+      adminBucket.setText("b:a1", "1"),
+    ]);
     const prefixToken = await adminBucket.tokens.create({
       prefix: "a:",
       permissions: ["enumerate"],
