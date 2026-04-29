@@ -29,6 +29,7 @@ export type {
   KeydockOptions,
   ListEntriesOptions,
   ListKeysOptions,
+  NonNullJsonValue,
   OperationOptions,
   ReadOptions,
   TokenPermission,

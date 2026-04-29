@@ -1,10 +1,10 @@
 import type { KyInstance } from "ky";
 
-import { KeydockError, KeydockValidationError } from "./errors.js";
+import { KeydockValidationError } from "./errors.js";
 import { encodeBucketId } from "./internal/encoding.js";
 import { readRequestOptions, writeRequestOptions } from "./internal/http.js";
-import { normalizeKyError } from "./internal/response.js";
-import { validateTtlSeconds } from "./keys.js";
+import { isNotFoundError, normalizeOperationError } from "./internal/response.js";
+import { validateTtlSeconds } from "./internal/validation.js";
 import type {
   BucketPolicy,
   CreateBucketInput,
@@ -91,12 +91,11 @@ export class BucketsNamespace {
       await this.http.head(encodeBucketId(bucketId), readRequestOptions(options));
       return true;
     } catch (error) {
-      const normalized = await catchNormalizedError(error);
-      if (normalized instanceof KeydockError && normalized.status === 404) {
+      if (isNotFoundError(error)) {
         return false;
       }
 
-      throw normalized;
+      throw await normalizeOperationError(error);
     }
   }
 }
@@ -118,7 +117,8 @@ function createBucketForm(input: CreateBucketInput): URLSearchParams {
 }
 
 function updatePolicyBody(patch: UpdateBucketPolicyInput): Record<string, string | number | null> {
-  if (patch.secretKey === null) {
+  const secretKey: unknown = patch.secretKey;
+  if (secretKey === null) {
     throw new KeydockValidationError("secretKey cannot be cleared");
   }
 
@@ -174,20 +174,4 @@ function appendPatch(
   if (value !== undefined) {
     body[key] = value;
   }
-}
-
-async function catchNormalizedError(error: unknown): Promise<unknown> {
-  try {
-    await normalizeOperationError(error);
-  } catch (normalized) {
-    return normalized;
-  }
-}
-
-async function normalizeOperationError(error: unknown): Promise<never> {
-  if (error instanceof KeydockValidationError) {
-    throw error;
-  }
-
-  throw await normalizeKyError(error);
 }

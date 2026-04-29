@@ -44,10 +44,12 @@ export function readRequestOptions(options: OperationOptions | undefined): KyOpt
 }
 
 export function writeRequestOptions(options: OperationOptions | undefined): KyOptions {
-  return {
+  const requestOptions = {
     ...options?.request,
     retry: NO_RETRY,
-  } as KyOptions;
+  } satisfies KyOptions;
+
+  return requestOptions;
 }
 
 function mergeBeforeRequestHook(

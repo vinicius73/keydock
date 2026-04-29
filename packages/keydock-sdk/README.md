@@ -162,7 +162,7 @@ Other SDK errors:
 - `KeydockTimeoutError` for request timeouts.
 - `KeydockNetworkError` for network failures.
 - `KeydockValidationError` for invalid local inputs such as empty keys, invalid TTLs,
-  zero counter increments, null transaction values, or `secretKey: null` in policy updates.
+  zero counter increments, null transaction values, or attempts to clear the bucket secret key.
 
 ## Retry Behaviour
 

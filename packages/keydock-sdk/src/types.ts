@@ -4,6 +4,7 @@ export type JsonPrimitive = string | number | boolean | null;
 export type JsonObject = { readonly [key: string]: JsonValue };
 export type JsonArray = readonly JsonValue[];
 export type JsonValue = JsonPrimitive | JsonObject | JsonArray;
+export type NonNullJsonValue = Exclude<JsonValue, null>;
 
 export type KeydockAuth = string | (() => string | Promise<string>);
 
@@ -63,7 +64,7 @@ export type BucketPolicy = {
 };
 
 export type UpdateBucketPolicyInput = {
-  secretKey?: string | null;
+  secretKey?: string;
   readKey?: string | null;
   writeKey?: string | null;
   signingKey?: string | null;
@@ -106,5 +107,5 @@ export type KeydockListEntry = {
 };
 
 export type TransactionOperation =
-  | { set: string; value: JsonValue; ttlSeconds?: number }
+  | { set: string; value: NonNullJsonValue; ttlSeconds?: number }
   | { delete: string };

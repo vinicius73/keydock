@@ -1,9 +1,14 @@
 import type { KyInstance } from "ky";
 
-import { KeydockError, KeydockValidationError } from "./errors.js";
+import { KeydockValidationError } from "./errors.js";
 import { encodeBucketId, encodeKey } from "./internal/encoding.js";
 import { readRequestOptions, writeRequestOptions } from "./internal/http.js";
-import { normalizeKyError, parseCounterResponse } from "./internal/response.js";
+import {
+  isNotFoundError,
+  normalizeOperationError,
+  parseCounterResponse,
+} from "./internal/response.js";
+import { validateNonNegativeInteger, validateTtlSeconds } from "./internal/validation.js";
 import type {
   CounterDelta,
   CounterValue,
@@ -35,7 +40,7 @@ export async function getTextOrNull(
   key: string,
   options?: OperationOptions,
 ): Promise<string | null> {
-  return orNull(() => getText(http, bucketId, key, options));
+  return orNull(() => http.get(keyPath(bucketId, key), readRequestOptions(options)).text());
 }
 
 export async function getJson<T = unknown>(
@@ -60,7 +65,12 @@ export async function getJsonOrNull<T = unknown>(
   key: string,
   options?: ReadOptions<T>,
 ): Promise<T | null> {
-  return orNull(() => getJson<T>(http, bucketId, key, options));
+  return orNull(async () => {
+    const value = await http
+      .get(keyPath(bucketId, key), readRequestOptions(options))
+      .json<unknown>();
+    return options?.parse === undefined ? (value as T) : options.parse(value);
+  });
 }
 
 export async function getBytes(
@@ -71,11 +81,6 @@ export async function getBytes(
 ): Promise<Uint8Array> {
   try {
     const response = await http.get(keyPath(bucketId, key), readRequestOptions(options));
-    const responseWithBytes = response as Response & { bytes?: () => Promise<Uint8Array> };
-    if (responseWithBytes.bytes !== undefined) {
-      return responseWithBytes.bytes();
-    }
-
     return new Uint8Array(await response.arrayBuffer());
   } catch (error) {
     throw await normalizeOperationError(error);
@@ -88,7 +93,10 @@ export async function getBytesOrNull(
   key: string,
   options?: OperationOptions,
 ): Promise<Uint8Array | null> {
-  return orNull(() => getBytes(http, bucketId, key, options));
+  return orNull(async () => {
+    const response = await http.get(keyPath(bucketId, key), readRequestOptions(options));
+    return new Uint8Array(await response.arrayBuffer());
+  });
 }
 
 export async function setText(
@@ -152,12 +160,11 @@ export async function keyExists(
     await http.head(keyPath(bucketId, key), readRequestOptions(options));
     return true;
   } catch (error) {
-    const normalized = await catchNormalizedError(error);
-    if (normalized instanceof KeydockError && normalized.status === 404) {
+    if (isNotFoundError(error)) {
       return false;
     }
 
-    throw normalized;
+    throw await normalizeOperationError(error);
   }
 }
 
@@ -283,20 +290,6 @@ function listSearchParams(
   return searchParams;
 }
 
-function validateNonNegativeInteger(name: string, value: number): void {
-  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
-    throw new KeydockValidationError(`${name} must be a finite integer greater than or equal to 0`);
-  }
-}
-
-export function validateTtlSeconds(ttlSeconds: number): void {
-  if (!Number.isFinite(ttlSeconds) || !Number.isInteger(ttlSeconds) || ttlSeconds < 0) {
-    throw new KeydockValidationError(
-      "ttlSeconds must be a finite integer greater than or equal to 0",
-    );
-  }
-}
-
 export function serializeDelta(delta: CounterDelta): string {
   if (typeof delta === "bigint") {
     if (delta === 0n) {
@@ -326,9 +319,7 @@ async function writeValue(
   bucketId: string,
   key: string,
   options: WriteOptions | undefined,
-  value:
-    | { body: BodyInit | Uint8Array | ArrayBuffer | Blob | string; contentType: string }
-    | { json: JsonValue },
+  value: { body: BodyInit | Uint8Array; contentType: string } | { json: JsonValue },
 ): Promise<void> {
   try {
     const requestOptions = writeRequestOptions(options);
@@ -342,7 +333,7 @@ async function writeValue(
 
     await http.put(pathWithTtl(keyPath(bucketId, key), options?.ttlSeconds), {
       ...requestOptions,
-      body: toBodyInit(value.body),
+      body: toUploadBody(value.body),
       headers: {
         "Content-Type": value.contentType,
       },
@@ -352,38 +343,32 @@ async function writeValue(
   }
 }
 
-function toBodyInit(value: BodyInit | Uint8Array | ArrayBuffer | Blob | string): BodyInit {
-  if (value instanceof Uint8Array) {
-    return value.slice().buffer;
+function toUploadBody(value: BodyInit | Uint8Array): BodyInit {
+  if (!(value instanceof Uint8Array)) {
+    return value;
   }
 
-  return value;
+  if (value.buffer instanceof ArrayBuffer) {
+    if (value.byteOffset === 0 && value.byteLength === value.buffer.byteLength) {
+      return value.buffer;
+    }
+
+    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+  }
+
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy.buffer;
 }
 
 async function orNull<T>(operation: () => Promise<T>): Promise<T | null> {
   try {
     return await operation();
   } catch (error) {
-    if (error instanceof KeydockError && error.status === 404) {
+    if (isNotFoundError(error)) {
       return null;
     }
 
-    throw error;
+    throw await normalizeOperationError(error);
   }
-}
-
-async function catchNormalizedError(error: unknown): Promise<unknown> {
-  try {
-    await normalizeOperationError(error);
-  } catch (normalized) {
-    return normalized;
-  }
-}
-
-async function normalizeOperationError(error: unknown): Promise<never> {
-  if (error instanceof KeydockValidationError) {
-    throw error;
-  }
-
-  throw await normalizeKyError(error);
 }

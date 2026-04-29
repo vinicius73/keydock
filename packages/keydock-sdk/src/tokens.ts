@@ -3,7 +3,8 @@ import type { KyInstance } from "ky";
 import { KeydockValidationError } from "./errors.js";
 import { encodeBucketId } from "./internal/encoding.js";
 import { writeRequestOptions } from "./internal/http.js";
-import { normalizeKyError } from "./internal/response.js";
+import { normalizeOperationError } from "./internal/response.js";
+import { validatePositiveInteger } from "./internal/validation.js";
 import type { AccessToken, CreateTokenInput, OperationOptions, TokenPermission } from "./types.js";
 
 const VALID_PERMISSIONS = new Set<TokenPermission>(["read", "write", "enumerate", "delete"]);
@@ -39,11 +40,7 @@ export class TokensNamespace {
         accessToken: response.access_token,
       };
     } catch (error) {
-      if (error instanceof KeydockValidationError) {
-        throw error;
-      }
-
-      throw await normalizeKyError(error);
+      throw await normalizeOperationError(error);
     }
   }
 }
@@ -52,13 +49,7 @@ function createTokenForm(input: CreateTokenInput): URLSearchParams {
   if (input.prefix.length === 0) {
     throw new KeydockValidationError("Token prefix must be non-empty");
   }
-  if (
-    !Number.isFinite(input.ttlSeconds) ||
-    !Number.isInteger(input.ttlSeconds) ||
-    input.ttlSeconds <= 0
-  ) {
-    throw new KeydockValidationError("ttlSeconds must be a positive integer");
-  }
+  validatePositiveInteger("ttlSeconds", input.ttlSeconds);
   if (input.permissions.length === 0) {
     throw new KeydockValidationError("Token permissions must be non-empty");
   }

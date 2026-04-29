@@ -8,6 +8,10 @@ import {
 } from "../errors.js";
 import type { CounterValue } from "../types.js";
 
+const INTEGER_COUNTER_RESPONSE = /^[+-]?\d+$/;
+const MIN_SAFE_INTEGER_BIGINT = BigInt(Number.MIN_SAFE_INTEGER);
+const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
 type ErrorEnvelope = {
   error?: {
     code?: unknown;
@@ -17,10 +21,10 @@ type ErrorEnvelope = {
 
 export function parseCounterResponse(raw: string): CounterValue {
   const value = raw.trim();
-  if (/^[+-]?\d+$/.test(value)) {
+  if (INTEGER_COUNTER_RESPONSE.test(value)) {
     const bigint = BigInt(value);
 
-    if (bigint >= BigInt(Number.MIN_SAFE_INTEGER) && bigint <= BigInt(Number.MAX_SAFE_INTEGER)) {
+    if (bigint >= MIN_SAFE_INTEGER_BIGINT && bigint <= MAX_SAFE_INTEGER_BIGINT) {
       return {
         raw: value,
         kind: "integer",
@@ -46,6 +50,22 @@ export function parseCounterResponse(raw: string): CounterValue {
   }
 
   throw new KeydockValidationError(`Invalid counter response: ${value}`);
+}
+
+export function isNotFoundError(error: unknown): boolean {
+  if (error instanceof HTTPError) {
+    return error.response.status === 404;
+  }
+
+  return error instanceof KeydockError && error.status === 404;
+}
+
+export async function normalizeOperationError(error: unknown): Promise<never> {
+  if (error instanceof KeydockValidationError) {
+    throw error;
+  }
+
+  throw await normalizeKyError(error);
 }
 
 export async function parseErrorBody(

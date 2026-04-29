@@ -3,8 +3,8 @@ import type { KyInstance } from "ky";
 import { KeydockValidationError } from "./errors.js";
 import { encodeBucketId, encodeKey } from "./internal/encoding.js";
 import { writeRequestOptions } from "./internal/http.js";
-import { normalizeKyError } from "./internal/response.js";
-import { validateTtlSeconds } from "./keys.js";
+import { normalizeOperationError } from "./internal/response.js";
+import { validateTtlSeconds } from "./internal/validation.js";
 import type { OperationOptions, TransactionOperation } from "./types.js";
 
 type WireTxnItem =
@@ -31,11 +31,7 @@ export async function executeTransaction(
       json: { txn },
     });
   } catch (error) {
-    if (error instanceof KeydockValidationError) {
-      throw error;
-    }
-
-    throw await normalizeKyError(error);
+    throw await normalizeOperationError(error);
   }
 }
 
@@ -51,7 +47,8 @@ export function serializeTransaction(operations: readonly TransactionOperation[]
       };
     }
 
-    if (operation.value === null) {
+    const value: unknown = operation.value;
+    if (value === null) {
       throw new KeydockValidationError("Transaction set values must not be null");
     }
 
