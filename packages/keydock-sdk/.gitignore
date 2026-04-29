@@ -1,1 +1,23 @@
+
+# Build outputs
 dist/
+*.tsbuildinfo
+
+# Test and coverage outputs
+coverage/
+*.lcov
+.nyc_output/
+
+# Package artifacts
+*.tgz
+
+# Tool caches
+.cache/
+.vite/
+
+# Local logs and environment
+logs/
+*.log
+.env
+.env.*
+!.env.example

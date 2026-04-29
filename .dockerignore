@@ -1,4 +1,10 @@
 /target
+dist
+**/dist
+coverage
+**/coverage
+.local
+data
 .git
 .gitignore
 **/*.md

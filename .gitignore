@@ -1,4 +1,11 @@
 /target
+dist/
+coverage/
+*.log
+*.tmp
+.env
+.env.*
+!.env.example
 /data
 /_docs
 /.local
