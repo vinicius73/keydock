@@ -14,6 +14,7 @@ export default defineConfig({
         transactions: resolve(import.meta.dirname, "apps/transactions/index.html"),
         errors: resolve(import.meta.dirname, "apps/errors/index.html"),
         "values-golden": resolve(import.meta.dirname, "apps/values-golden/index.html"),
+        "listing-golden": resolve(import.meta.dirname, "apps/listing-golden/index.html"),
       },
     },
   },
