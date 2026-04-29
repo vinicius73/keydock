@@ -62,9 +62,13 @@ k6 scenario="all":
     tests/k6/run-local.sh {{ scenario }}
 
 [group('qa')]
-e2e:
+e2e script="test":
     cargo build -p keydock --release
-    cd tests/e2e && bun install && bun run install:browsers && bun run test
+    cd tests/e2e && bun install && bun run install:browsers && bun run {{ script }}
+
+[group('qa')]
+e2e-report:
+    cd tests/e2e && bun run report
 
 
 # --- SDK ---
