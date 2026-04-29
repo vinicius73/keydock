@@ -1,4 +1,5 @@
 export { BucketHandle } from "./bucket.js";
+export { BucketsNamespace } from "./buckets.js";
 
 export {
   KeydockError,
@@ -6,6 +7,7 @@ export {
   KeydockTimeoutError,
   KeydockValidationError,
 } from "./errors.js";
+export { TokensNamespace } from "./tokens.js";
 
 export type {
   AccessToken,

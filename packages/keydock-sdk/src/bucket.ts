@@ -16,6 +16,7 @@ import {
   setJson,
   setText,
 } from "./keys.js";
+import { TokensNamespace } from "./tokens.js";
 import { executeTransaction } from "./transactions.js";
 import type {
   CounterDelta,
@@ -31,10 +32,14 @@ import type {
 } from "./types.js";
 
 export class BucketHandle {
+  readonly tokens: TokensNamespace;
+
   constructor(
     private readonly bucketId: string,
     private readonly http: KyInstance,
-  ) {}
+  ) {
+    this.tokens = new TokensNamespace(bucketId, http);
+  }
 
   getText(key: string, options?: OperationOptions): Promise<string> {
     return getText(this.http, this.bucketId, key, options);
