@@ -1,4 +1,4 @@
-import { createKeydock, KeydockError, KeydockValidationError } from "keydock-sdk";
+import { createKeydock } from "keydock-sdk";
 
 import {
   readConfig,
@@ -6,6 +6,7 @@ import {
   requireBucketId,
   requireKey,
 } from "../../../src/browser-config.js";
+import { captureAnyError, captureKeydockError, sleep } from "../../../src/sdk-test-helpers.js";
 import {
   appendLog,
   mountE2eApp,
@@ -128,39 +129,4 @@ async function run(): Promise<void> {
   } catch (error) {
     renderError(error);
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return error;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail with KeydockError");
-}
-
-async function captureAnyError(operation: () => Promise<unknown>): Promise<string> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return `${error.name}:${error.status}`;
-    }
-    if (error instanceof KeydockValidationError) {
-      return error.name;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail");
 }

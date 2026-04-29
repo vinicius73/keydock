@@ -1,6 +1,13 @@
-import { createKeydock, KeydockError, KeydockValidationError } from "keydock-sdk";
+import { createKeydock } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
+import {
+  bucketCreateInput,
+  captureAnyError,
+  captureKeydockError,
+  sleep,
+  withTemporaryBucket,
+} from "../../../src/sdk-test-helpers.js";
 import { mountE2eApp, renderError, setStatus, setStep, setText } from "../../../src/ui.js";
 
 const steps = [
@@ -41,25 +48,16 @@ async function run(): Promise<void> {
     const config = readConfig();
     const credentials = requireCredentials(config);
     const anonymous = createKeydock({ baseUrl: config.url });
-    const admin = createKeydock({ baseUrl: config.url, auth: credentials.secretKey });
+    const admin = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.secretKey,
+    });
 
-    const createInput = {
-      email: credentials.email,
-      secretKey: credentials.secretKey,
-      readKey: credentials.readKey,
-      writeKey: credentials.writeKey,
-      defaultTtlSeconds: 0,
-    };
     const created = await anonymous.buckets.create(
-      credentials.signingKey === undefined
-        ? {
-            ...createInput,
-            signingKey: `${credentials.secretKey}-signing`,
-          }
-        : {
-            ...createInput,
-            signingKey: credentials.signingKey,
-          },
+      bucketCreateInput(credentials, {
+        defaultTtlSeconds: 0,
+        fallbackSigningKey: `${credentials.secretKey}-signing`,
+      }),
     );
     setText("bucket-id", created.id);
     setStep("create-result", "done", "bucket created");
@@ -200,21 +198,33 @@ async function run(): Promise<void> {
       "sdk-empty-prefix",
       "done",
       await captureAnyError(() =>
-        adminBucket.tokens.create({ prefix: "", permissions: ["read"], ttlSeconds: 900 }),
+        adminBucket.tokens.create({
+          prefix: "",
+          permissions: ["read"],
+          ttlSeconds: 900,
+        }),
       ),
     );
     setStep(
       "sdk-zero-ttl",
       "done",
       await captureAnyError(() =>
-        adminBucket.tokens.create({ prefix: "scope:", permissions: ["read"], ttlSeconds: 0 }),
+        adminBucket.tokens.create({
+          prefix: "scope:",
+          permissions: ["read"],
+          ttlSeconds: 0,
+        }),
       ),
     );
     setStep(
       "sdk-empty-permissions",
       "done",
       await captureAnyError(() =>
-        adminBucket.tokens.create({ prefix: "scope:", permissions: [], ttlSeconds: 900 }),
+        adminBucket.tokens.create({
+          prefix: "scope:",
+          permissions: [],
+          ttlSeconds: 900,
+        }),
       ),
     );
 
@@ -226,57 +236,4 @@ async function run(): Promise<void> {
 
 function tokenBucket(baseUrl: string, bucketId: string, accessToken: string) {
   return createKeydock({ baseUrl, auth: accessToken }).bucket(bucketId);
-}
-
-async function withTemporaryBucket(
-  baseUrl: string,
-  input: {
-    email: string;
-    secretKey: string;
-  },
-  operation: (client: ReturnType<typeof createKeydock>, bucketId: string) => Promise<void>,
-): Promise<void> {
-  const anonymous = createKeydock({ baseUrl });
-  const created = await anonymous.buckets.create(input);
-  const client = createKeydock({ baseUrl, auth: input.secretKey });
-  try {
-    await operation(client, created.id);
-  } finally {
-    await client.buckets.delete(created.id);
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return error;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail with KeydockError");
-}
-
-async function captureAnyError(operation: () => Promise<unknown>): Promise<string> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return `${error.name}:${error.status}`;
-    }
-    if (error instanceof KeydockValidationError) {
-      return error.name;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail");
 }

@@ -1,6 +1,13 @@
-import { createKeydock, KeydockError } from "keydock-sdk";
+import { createKeydock } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
+import {
+  bucketCreateInput,
+  captureKeydockError,
+  createPublicBucket,
+  publicBucketSecretKey,
+  sleep,
+} from "../../../src/sdk-test-helpers.js";
 import { mountE2eApp, renderError, setStatus, setStep, setText } from "../../../src/ui.js";
 
 const steps = [
@@ -38,25 +45,22 @@ async function run(): Promise<void> {
     const config = readConfig();
     const credentials = requireCredentials(config);
     const anonymous = createKeydock({ baseUrl: config.url });
-    const admin = createKeydock({ baseUrl: config.url, auth: credentials.secretKey });
-    const readClient = createKeydock({ baseUrl: config.url, auth: credentials.readKey });
-    const writeClient = createKeydock({ baseUrl: config.url, auth: credentials.writeKey });
+    const admin = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.secretKey,
+    });
+    const readClient = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.readKey,
+    });
+    const writeClient = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.writeKey,
+    });
 
     setStep("create-result", "running", "creating bucket");
-    const createInput = {
-      email: credentials.email,
-      secretKey: credentials.secretKey,
-      readKey: credentials.readKey,
-      writeKey: credentials.writeKey,
-      defaultTtlSeconds: 0,
-    };
     const created = await anonymous.buckets.create(
-      credentials.signingKey === undefined
-        ? createInput
-        : {
-            ...createInput,
-            signingKey: credentials.signingKey,
-          },
+      bucketCreateInput(credentials, { defaultTtlSeconds: 0 }),
     );
     setText("bucket-id", created.id);
     setStep("create-result", "done", "bucket created");
@@ -79,7 +83,9 @@ async function run(): Promise<void> {
     await adminBucket.setText("bar:1", "1");
     setStep("list-prefix", "done", (await readBucket.listKeys({ prefix: "foo:" })).join(","));
 
-    await seedText(adminBucket, ["k0", "k1", "k2", "k3"]);
+    for (const key of ["k0", "k1", "k2", "k3"]) {
+      await adminBucket.setText(key, key);
+    }
     setStep(
       "list-limit",
       "done",
@@ -108,7 +114,7 @@ async function run(): Promise<void> {
     try {
       const publicAdmin = createKeydock({
         baseUrl: config.url,
-        auth: `${credentials.secretKey}-public`,
+        auth: publicBucketSecretKey(credentials),
       }).bucket(publicBucketId);
       await publicAdmin.setText("public:key", "visible");
       const publicKeys = await anonymous.bucket(publicBucketId).listKeys();
@@ -116,7 +122,7 @@ async function run(): Promise<void> {
     } finally {
       await createKeydock({
         baseUrl: config.url,
-        auth: `${credentials.secretKey}-public`,
+        auth: publicBucketSecretKey(credentials),
       }).buckets.delete(publicBucketId);
     }
 
@@ -175,50 +181,9 @@ async function run(): Promise<void> {
   }
 }
 
-async function seedText(
-  bucket: { setText: (key: string, value: string) => Promise<void> },
-  keys: string[],
-) {
-  for (const key of keys) {
-    await bucket.setText(key, key);
-  }
-}
-
-async function createPublicBucket(
-  baseUrl: string,
-  credentials: { email: string; secretKey: string },
-): Promise<string> {
-  const client = createKeydock({ baseUrl });
-  const created = await client.buckets.create({
-    email: `public-${credentials.email}`,
-    secretKey: `${credentials.secretKey}-public`,
-    defaultTtlSeconds: 0,
-  });
-  return created.id;
-}
-
 function jsonValue(value: unknown): string {
   if (typeof value === "object" && value !== null && "x" in value) {
     return String(value.x);
   }
   return String(value);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return error;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail with KeydockError");
 }

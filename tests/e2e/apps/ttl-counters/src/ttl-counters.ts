@@ -1,7 +1,13 @@
-import { createKeydock, KeydockError, KeydockValidationError } from "keydock-sdk";
+import { createKeydock } from "keydock-sdk";
 import type { CounterValue } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
+import {
+  captureAnyError,
+  captureKeydockError,
+  sleep,
+  withTemporaryBucket,
+} from "../../../src/sdk-test-helpers.js";
 import { mountE2eApp, renderError, setStatus, setStep, setText } from "../../../src/ui.js";
 
 const steps = [
@@ -42,7 +48,10 @@ async function run(): Promise<void> {
     const config = readConfig();
     const credentials = requireCredentials(config);
     const anonymous = createKeydock({ baseUrl: config.url });
-    const admin = createKeydock({ baseUrl: config.url, auth: credentials.secretKey });
+    const admin = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.secretKey,
+    });
 
     const created = await anonymous.buckets.create({
       email: credentials.email,
@@ -58,7 +67,9 @@ async function run(): Promise<void> {
 
     await bucket.setText("ttl:text", "v", { ttlSeconds: 1 });
     await bucket.setJson("ttl:json", { x: 1 }, { ttlSeconds: 1 });
-    await bucket.setBytes("ttl:bytes", new Uint8Array([1, 2, 3]), { ttlSeconds: 1 });
+    await bucket.setBytes("ttl:bytes", new Uint8Array([1, 2, 3]), {
+      ttlSeconds: 1,
+    });
     await bucket.setText("ttl:zero", "v", { ttlSeconds: 0 });
     await bucket.setText("ttl:list", "gone", { ttlSeconds: 1 });
     await bucket.increment("counter:ttl", 1, { ttlSeconds: 1 });
@@ -164,58 +175,4 @@ function counterSummary(counter: CounterValue): string {
   const numberPart =
     "number" in counter && counter.number !== undefined ? `,number:${counter.number}` : "";
   return `raw:${counter.raw},kind:${counter.kind}${numberPart}`;
-}
-
-async function withTemporaryBucket(
-  baseUrl: string,
-  input: {
-    email: string;
-    secretKey: string;
-    defaultTtlSeconds?: number;
-  },
-  operation: (client: ReturnType<typeof createKeydock>, bucketId: string) => Promise<void>,
-): Promise<void> {
-  const anonymous = createKeydock({ baseUrl });
-  const created = await anonymous.buckets.create(input);
-  const client = createKeydock({ baseUrl, auth: input.secretKey });
-  try {
-    await operation(client, created.id);
-  } finally {
-    await client.buckets.delete(created.id);
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return error;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail with KeydockError");
-}
-
-async function captureAnyError(operation: () => Promise<unknown>): Promise<string> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return `${error.name}:${error.status}`;
-    }
-    if (error instanceof KeydockValidationError) {
-      return error.name;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail");
 }

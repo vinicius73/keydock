@@ -1,6 +1,7 @@
-import { createKeydock, KeydockError } from "keydock-sdk";
+import { createKeydock } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
+import { bucketCreateInput, captureKeydockError } from "../../../src/sdk-test-helpers.js";
 import {
   appendLog,
   mountE2eApp,
@@ -67,20 +68,8 @@ async function run(): Promise<void> {
     });
 
     setStep("create-result", "running", "creating bucket");
-    const createInput = {
-      email: credentials.email,
-      secretKey: credentials.secretKey,
-      readKey: credentials.readKey,
-      writeKey: credentials.writeKey,
-      defaultTtlSeconds: 0,
-    };
     const created = await anonymous.buckets.create(
-      credentials.signingKey === undefined
-        ? createInput
-        : {
-            ...createInput,
-            signingKey: credentials.signingKey,
-          },
+      bucketCreateInput(credentials, { defaultTtlSeconds: 0 }),
     );
     setText("bucket-id", created.id);
     setStep("create-result", "done", "bucket created");
@@ -120,11 +109,7 @@ async function run(): Promise<void> {
 
     await writeBucket.setBytes("bytes", new Uint8Array([0xff, 0x00, 0xfe]));
     const bytes = await readBucket.getBytes("bytes");
-    setStep(
-      "setBytes-roundtrip",
-      "done",
-      bytesEqual(bytes, [0xff, 0x00, 0xfe]) ? "equal" : "different",
-    );
+    setStep("setBytes-roundtrip", "done", bytes.join(",") === "255,0,254" ? "equal" : "different");
 
     setStep("getTextOrNull-miss", "done", String(await readBucket.getTextOrNull("__miss__")));
     setStep("getJsonOrNull-miss", "done", String(await readBucket.getJsonOrNull("__miss__")));
@@ -182,23 +167,4 @@ async function run(): Promise<void> {
   } catch (error) {
     renderError(error);
   }
-}
-
-function bytesEqual(actual: Uint8Array, expected: readonly number[]): boolean {
-  return (
-    actual.length === expected.length && expected.every((value, index) => actual[index] === value)
-  );
-}
-
-async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return error;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail with KeydockError");
 }

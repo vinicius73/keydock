@@ -1,6 +1,11 @@
-import { createKeydock, KeydockError } from "keydock-sdk";
+import { createKeydock } from "keydock-sdk";
 
 import { readConfig, requireCredentials } from "../../../src/browser-config.js";
+import {
+  captureKeydockError,
+  createPublicBucket,
+  publicBucketSecretKey,
+} from "../../../src/sdk-test-helpers.js";
 import { mountE2eApp, renderError, setStatus, setStep, setText } from "../../../src/ui.js";
 
 const steps = [
@@ -42,10 +47,22 @@ async function run(): Promise<void> {
     const config = readConfig();
     const credentials = requireCredentials(config);
     const anonymous = createKeydock({ baseUrl: config.url });
-    const admin = createKeydock({ baseUrl: config.url, auth: credentials.secretKey });
-    const readClient = createKeydock({ baseUrl: config.url, auth: credentials.readKey });
-    const writeClient = createKeydock({ baseUrl: config.url, auth: credentials.writeKey });
-    const wrongClient = createKeydock({ baseUrl: config.url, auth: "wrong-credential" });
+    const admin = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.secretKey,
+    });
+    const readClient = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.readKey,
+    });
+    const writeClient = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.writeKey,
+    });
+    const wrongClient = createKeydock({
+      baseUrl: config.url,
+      auth: "wrong-credential",
+    });
 
     setStep("create-result", "running", "creating bucket");
     const created = await anonymous.buckets.create({
@@ -130,15 +147,11 @@ async function runPublicBucketChecks(
   credentials: { email: string; secretKey: string },
 ): Promise<void> {
   const anonymous = createKeydock({ baseUrl });
-  const publicSecretKey = `${credentials.secretKey}-public`;
-  const created = await anonymous.buckets.create({
-    email: `public-${credentials.email}`,
-    secretKey: publicSecretKey,
-    defaultTtlSeconds: 0,
-  });
+  const publicSecretKey = publicBucketSecretKey(credentials);
+  const publicBucketId = await createPublicBucket(baseUrl, credentials);
   const admin = createKeydock({ baseUrl, auth: publicSecretKey });
-  const adminBucket = admin.bucket(created.id);
-  const anonymousBucket = anonymous.bucket(created.id);
+  const adminBucket = admin.bucket(publicBucketId);
+  const anonymousBucket = anonymous.bucket(publicBucketId);
 
   try {
     await adminBucket.setText("public-read", "ok");
@@ -153,19 +166,6 @@ async function runPublicBucketChecks(
     const publicDelete = await captureKeydockError(() => anonymousBucket.delete("public-read"));
     setStep("public-anon-delete", "done", `${publicDelete.name}:${publicDelete.status}`);
   } finally {
-    await admin.buckets.delete(created.id);
+    await admin.buckets.delete(publicBucketId);
   }
-}
-
-async function captureKeydockError(operation: () => Promise<unknown>): Promise<KeydockError> {
-  try {
-    await operation();
-  } catch (error) {
-    if (error instanceof KeydockError) {
-      return error;
-    }
-    throw error;
-  }
-
-  throw new Error("expected operation to fail with KeydockError");
 }
