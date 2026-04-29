@@ -62,6 +62,29 @@ k6 scenario="all":
     tests/k6/run-local.sh {{ scenario }}
 
 
+# --- SDK ---
+
+[group('sdk')]
+sdk-fmt:
+    cd packages/keydock-sdk && bun run fmt
+
+[group('sdk')]
+sdk-typecheck:
+    cd packages/keydock-sdk && bun run typecheck
+
+[group('sdk')]
+sdk-test:
+    cd packages/keydock-sdk && bun test
+
+[group('sdk')]
+sdk-build:
+    cd packages/keydock-sdk && bun run build
+
+[group('sdk')]
+sdk-qa:
+    cd packages/keydock-sdk && bun run qa
+
+
 # --- Dev ---
 
 [group('dev')]

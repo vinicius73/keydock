@@ -1,0 +1,30 @@
+{
+  "name": "@keydock/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "ky": "^1.9.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "latest",
+    "typescript": "latest"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.json",
+    "test": "bun test",
+    "fmt": "biome check --write .",
+    "qa": "bun run fmt && bun run typecheck && bun test"
+  }
+}
