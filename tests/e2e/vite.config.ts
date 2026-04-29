@@ -16,6 +16,7 @@ export default defineConfig({
         "values-golden": resolve(import.meta.dirname, "apps/values-golden/index.html"),
         "listing-golden": resolve(import.meta.dirname, "apps/listing-golden/index.html"),
         "auth-matrix": resolve(import.meta.dirname, "apps/auth-matrix/index.html"),
+        "policy-golden": resolve(import.meta.dirname, "apps/policy-golden/index.html"),
       },
     },
   },
