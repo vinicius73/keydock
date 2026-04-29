@@ -8,7 +8,7 @@ use keydock_state::AppState;
 use keydock_usecase::{KeyService, TxnOp, TxnService};
 use serde::Deserialize;
 use serde_json::Value as JsonValue;
-use tracing::instrument;
+use tracing::{info, instrument};
 use utoipa::ToSchema;
 
 use crate::blocking;
@@ -99,6 +99,8 @@ pub async fn execute_txn(
     // 400/422 plain-text responses.
     let req: TxnRequest = serde_json::from_slice(&body).map_err(|_| bad_request())?;
     let mut ops: Vec<TxnOp> = Vec::with_capacity(req.txn.len());
+    let mut set_count: usize = 0;
+    let mut delete_count: usize = 0;
     for item in req.txn {
         match item {
             TxnItem::Set(TxnSet { set, value, ttl }) => {
@@ -115,18 +117,29 @@ pub async fn execute_txn(
                     value: stored,
                     expires_at,
                 });
+                set_count += 1;
             }
             TxnItem::Delete(TxnDelete { delete }) => {
                 let key_dom = parse_percent_encoded_key(&delete)?;
                 auth.require_delete_on(&key_dom)?;
                 ops.push(TxnOp::Delete { key: key_dom });
+                delete_count += 1;
             }
         }
     }
 
+    let op_count = ops.len();
     let keys = state.keys().clone();
     let bucket_id = auth.bucket_id.clone();
     blocking::spawn_usecase(move || TxnService::execute(keys.as_ref(), &bucket_id, &ops)).await?;
+
+    info!(
+        bucket = %auth.bucket_id.as_str(),
+        op_count,
+        set_count,
+        delete_count,
+        "transaction committed"
+    );
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }

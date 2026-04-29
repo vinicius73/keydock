@@ -38,4 +38,9 @@ pub async fn init_rate_limiter(settings: &RateLimitSettings) {
     let rule = lazy_limit::RuleConfig::new(lazy_limit::Duration::hours(1), tokens);
     let limiter_config = lazy_limit::LimiterConfig::new(rule);
     lazy_limit::initialize_limiter(limiter_config).await;
+    tracing::info!(
+        requests_per_hour = settings.requests_per_hour,
+        effective_requests_per_hour = u64::from(tokens),
+        "rate limiter initialized"
+    );
 }

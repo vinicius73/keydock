@@ -12,7 +12,7 @@ use keydock_usecase::{KeyService, ListEntry, ListOptsInput, ResolvedIdentity};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::json;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -408,6 +408,12 @@ pub async fn create_bucket(
     // already treats `Some(0)` the same as `None`.
     let default_ttl_secs = Some(form.default_ttl.unwrap_or(DEFAULT_BUCKET_TTL_SECS));
 
+    // Capture log fields before variables are moved into the policy struct.
+    let has_secret_key = secret_key_hash.is_some();
+    let has_read_key = read_key_hash.is_some();
+    let has_write_key = write_key_hash.is_some();
+    let has_signing_key = signing_key.is_some();
+
     let policy = BucketPolicy {
         default_ttl_secs,
         anonymous_access,
@@ -423,6 +429,20 @@ pub async fn create_bucket(
     let buckets = state.buckets().clone();
     let id2 = id.clone();
     blocking::spawn_usecase(move || buckets.create_bucket(&id2, policy)).await?;
+
+    info!(
+        bucket = %id.as_str(),
+        has_secret_key,
+        has_read_key,
+        has_write_key,
+        has_signing_key,
+        default_ttl_secs = ?default_ttl_secs,
+        anonymous_read = anonymous_access.read,
+        anonymous_write = anonymous_access.write,
+        anonymous_delete = anonymous_access.delete,
+        anonymous_enumerate = anonymous_access.enumerate,
+        "bucket created"
+    );
 
     let body = id.as_str().to_string();
     Ok((
@@ -555,15 +575,48 @@ pub async fn update_policy(
         .await?
         .ok_or_else(not_found)?;
 
-    apply_policy_patch(&mut policy, patch, state.root_key().as_ref())?;
+    let audit = apply_policy_patch(&mut policy, patch, state.root_key().as_ref())?;
 
     policy.anonymous_access = recompute_anonymous_access(&policy);
+
+    // Capture log fields before policy is moved into the blocking closure.
+    let signing_key_generation = policy.signing_key_generation;
+    let has_read_key = policy.read_key_hash.is_some();
+    let has_write_key = policy.write_key_hash.is_some();
+    let has_signing_key = policy.signing_key.is_some();
+    let default_ttl_secs = policy.default_ttl_secs;
 
     let buckets = state.buckets().clone();
     let bucket_id = auth.bucket_id.clone();
     blocking::spawn_usecase(move || buckets.create_bucket(&bucket_id, policy)).await?;
 
+    info!(
+        bucket = %auth.bucket_id.as_str(),
+        secret_key_rotated = audit.secret_key_rotated,
+        read_key_changed = audit.read_key_changed,
+        write_key_changed = audit.write_key_changed,
+        signing_key_changed = audit.signing_key_changed,
+        signing_key_cleared = audit.signing_key_cleared,
+        default_ttl_changed = audit.default_ttl_changed,
+        signing_key_generation,
+        has_read_key,
+        has_write_key,
+        has_signing_key,
+        default_ttl_secs = ?default_ttl_secs,
+        "bucket policy updated"
+    );
+
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Safe audit record of what changed in a policy patch (no secret material).
+struct PolicyPatchAudit {
+    secret_key_rotated: bool,
+    read_key_changed: bool,
+    write_key_changed: bool,
+    signing_key_changed: bool,
+    signing_key_cleared: bool,
+    default_ttl_changed: bool,
 }
 
 /// Mutates `policy` according to the JSON patch.
@@ -578,18 +631,30 @@ fn apply_policy_patch(
     policy: &mut BucketPolicy,
     patch: UpdatePolicyJson,
     root_key: &SigningKey,
-) -> Result<(), Response> {
+) -> Result<PolicyPatchAudit, Response> {
+    let mut audit = PolicyPatchAudit {
+        secret_key_rotated: false,
+        read_key_changed: false,
+        write_key_changed: false,
+        signing_key_changed: false,
+        signing_key_cleared: false,
+        default_ttl_changed: false,
+    };
+
     if let Some(inner) = patch.secret_key {
         let s = inner.ok_or_else(bad_request)?;
         if s.is_empty() {
             return Err(bad_request());
         }
         policy.secret_key_hash = Some(hash_api_key_or_fail(root_key, &s)?);
+        audit.secret_key_rotated = true;
     }
     if let Some(inner) = patch.read_key {
+        audit.read_key_changed = true;
         policy.read_key_hash = apply_nullable_hash(inner, root_key)?;
     }
     if let Some(inner) = patch.write_key {
+        audit.write_key_changed = true;
         policy.write_key_hash = apply_nullable_hash(inner, root_key)?;
     }
     if let Some(inner) = patch.signing_key {
@@ -606,12 +671,15 @@ fn apply_policy_patch(
         if changed {
             policy.signing_key_generation += 1;
         }
+        audit.signing_key_cleared = new_bytes.is_none();
+        audit.signing_key_changed = changed;
         policy.signing_key = new_bytes.map(|b| SigningKey::new(Box::new(b)));
     }
     if let Some(inner) = patch.default_ttl {
+        audit.default_ttl_changed = true;
         policy.default_ttl_secs = inner;
     }
-    Ok(())
+    Ok(audit)
 }
 
 fn apply_nullable_hash(
@@ -649,6 +717,8 @@ pub async fn delete_bucket(
     let buckets = state.buckets().clone();
     let bucket_id = auth.bucket_id.clone();
     blocking::spawn_usecase(move || buckets.delete_bucket(&bucket_id)).await?;
+
+    info!(bucket = %auth.bucket_id.as_str(), "bucket deleted");
 
     Ok(StatusCode::NO_CONTENT)
 }

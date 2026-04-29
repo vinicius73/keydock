@@ -82,19 +82,19 @@ pub fn internal_error() -> Response {
 pub fn map_use_case_repo_err(err: UseCaseError) -> Response {
     match err {
         UseCaseError::Storage(msg) => {
-            tracing::error!(error = %msg, "repository error");
+            tracing::error!(error = %msg, error_kind = "storage", "repository error");
             internal_error()
         }
         UseCaseError::NotFound => {
-            tracing::debug!("resource not found");
+            tracing::debug!(error_kind = "not_found", "resource not found");
             not_found()
         }
         UseCaseError::Domain(e) => {
-            tracing::debug!(error = %e, "domain validation failed");
+            tracing::debug!(error = %e, error_kind = "domain", "domain validation failed");
             bad_request()
         }
         UseCaseError::NotImplemented => {
-            tracing::debug!("operation not implemented");
+            tracing::debug!(error_kind = "not_implemented", "operation not implemented");
             not_implemented("not implemented")
         }
     }

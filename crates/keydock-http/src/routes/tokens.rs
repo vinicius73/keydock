@@ -6,7 +6,7 @@ use keydock_state::AppState;
 use keydock_usecase::mint;
 use serde::{Deserialize, Serialize};
 use time::Duration;
-use tracing::instrument;
+use tracing::{info, instrument};
 use utoipa::ToSchema;
 
 use crate::blocking;
@@ -115,6 +115,18 @@ pub async fn create_token(
     };
 
     let access_token = mint(&claims, signing_key).map_err(|_| service_unavailable())?;
+
+    info!(
+        bucket = %auth.bucket_id.as_str(),
+        ttl_secs = form.ttl,
+        prefix_len = claims.allowed_prefix.len(),
+        permission_read = claims.permissions.read,
+        permission_write = claims.permissions.write,
+        permission_delete = claims.permissions.delete,
+        permission_enumerate = claims.permissions.enumerate,
+        signing_key_generation = policy.signing_key_generation,
+        "token minted"
+    );
 
     Ok(axum::Json(AccessTokenResponse { access_token }))
 }

@@ -65,7 +65,16 @@ impl BucketAuth {
     pub fn require_admin(&self) -> Result<(), Response> {
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
-            _ => Err(forbidden()),
+            _ => {
+                tracing::debug!(
+                    bucket = %self.bucket_id.as_str(),
+                    action = "admin",
+                    identity_kind = %self.identity_kind(),
+                    reason = "admin_required",
+                    "authorization denied"
+                );
+                Err(forbidden())
+            }
         }
     }
 
@@ -77,11 +86,25 @@ impl BucketAuth {
                 if permissions.enumerate {
                     Ok(())
                 } else {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "enumerate",
+                        identity_kind = "scoped",
+                        reason = "missing_permission",
+                        "authorization denied"
+                    );
                     Err(forbidden())
                 }
             }
             ResolvedIdentity::Anonymous => {
                 if self.policy_presence.has_read_key {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "enumerate",
+                        identity_kind = "anonymous",
+                        reason = "credential_required",
+                        "authorization denied"
+                    );
                     Err(unauthorized())
                 } else {
                     Ok(())
@@ -92,6 +115,7 @@ impl BucketAuth {
 
     #[instrument(skip_all, name = "BucketAuth::require_read_on")]
     pub fn require_read_on(&self, key: &Key) -> Result<(), Response> {
+        let key_len = key.as_bytes().len();
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
             ResolvedIdentity::Scoped {
@@ -99,13 +123,40 @@ impl BucketAuth {
                 key_prefix,
             } => {
                 if !permissions.read {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "read",
+                        identity_kind = "scoped",
+                        key_len,
+                        reason = "missing_permission",
+                        "authorization denied"
+                    );
                     return Err(forbidden());
                 }
-                Self::enforce_prefix(key_prefix, key)?;
+                if !Self::is_prefix_ok(key_prefix, key) {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "read",
+                        identity_kind = "scoped",
+                        key_len,
+                        prefix_len = key_prefix.len(),
+                        reason = "prefix_mismatch",
+                        "authorization denied"
+                    );
+                    return Err(forbidden());
+                }
                 Ok(())
             }
             ResolvedIdentity::Anonymous => {
                 if self.policy_presence.has_read_key {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "read",
+                        identity_kind = "anonymous",
+                        key_len,
+                        reason = "credential_required",
+                        "authorization denied"
+                    );
                     Err(unauthorized())
                 } else {
                     Ok(())
@@ -116,6 +167,7 @@ impl BucketAuth {
 
     #[instrument(skip_all, name = "BucketAuth::require_write_on")]
     pub fn require_write_on(&self, key: &Key) -> Result<(), Response> {
+        let key_len = key.as_bytes().len();
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
             ResolvedIdentity::Scoped {
@@ -123,17 +175,52 @@ impl BucketAuth {
                 key_prefix,
             } => {
                 if !permissions.write {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "write",
+                        identity_kind = "scoped",
+                        key_len,
+                        reason = "missing_permission",
+                        "authorization denied"
+                    );
                     return Err(forbidden());
                 }
-                Self::enforce_prefix(key_prefix, key)?;
+                if !Self::is_prefix_ok(key_prefix, key) {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "write",
+                        identity_kind = "scoped",
+                        key_len,
+                        prefix_len = key_prefix.len(),
+                        reason = "prefix_mismatch",
+                        "authorization denied"
+                    );
+                    return Err(forbidden());
+                }
                 Ok(())
             }
             ResolvedIdentity::Anonymous => {
                 if self.policy_presence.has_write_key {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "write",
+                        identity_kind = "anonymous",
+                        key_len,
+                        reason = "credential_required",
+                        "authorization denied"
+                    );
                     Err(unauthorized())
                 } else if self.anonymous_access.write {
                     Ok(())
                 } else {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "write",
+                        identity_kind = "anonymous",
+                        key_len,
+                        reason = "anonymous_forbidden",
+                        "authorization denied"
+                    );
                     Err(forbidden())
                 }
             }
@@ -142,6 +229,7 @@ impl BucketAuth {
 
     #[instrument(skip_all, name = "BucketAuth::require_delete_on")]
     pub fn require_delete_on(&self, key: &Key) -> Result<(), Response> {
+        let key_len = key.as_bytes().len();
         match &self.identity {
             ResolvedIdentity::Admin => Ok(()),
             ResolvedIdentity::Scoped {
@@ -149,20 +237,63 @@ impl BucketAuth {
                 key_prefix,
             } => {
                 if !permissions.delete {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "delete",
+                        identity_kind = "scoped",
+                        key_len,
+                        reason = "missing_permission",
+                        "authorization denied"
+                    );
                     return Err(forbidden());
                 }
-                Self::enforce_prefix(key_prefix, key)?;
+                if !Self::is_prefix_ok(key_prefix, key) {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "delete",
+                        identity_kind = "scoped",
+                        key_len,
+                        prefix_len = key_prefix.len(),
+                        reason = "prefix_mismatch",
+                        "authorization denied"
+                    );
+                    return Err(forbidden());
+                }
                 Ok(())
             }
             ResolvedIdentity::Anonymous => {
                 if self.any_policy_key_present() {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "delete",
+                        identity_kind = "anonymous",
+                        key_len,
+                        reason = "credential_required",
+                        "authorization denied"
+                    );
                     Err(unauthorized())
                 } else if self.anonymous_access.delete {
                     Ok(())
                 } else {
+                    tracing::debug!(
+                        bucket = %self.bucket_id.as_str(),
+                        action = "delete",
+                        identity_kind = "anonymous",
+                        key_len,
+                        reason = "anonymous_forbidden",
+                        "authorization denied"
+                    );
                     Err(forbidden())
                 }
             }
+        }
+    }
+
+    fn identity_kind(&self) -> &'static str {
+        match &self.identity {
+            ResolvedIdentity::Admin => "admin",
+            ResolvedIdentity::Scoped { .. } => "scoped",
+            ResolvedIdentity::Anonymous => "anonymous",
         }
     }
 
@@ -172,15 +303,8 @@ impl BucketAuth {
             || self.policy_presence.has_read_key
     }
 
-    fn enforce_prefix(key_prefix: &[u8], key: &Key) -> Result<(), Response> {
-        if key_prefix.is_empty() {
-            return Ok(());
-        }
-        if key.as_bytes().starts_with(key_prefix) {
-            Ok(())
-        } else {
-            Err(forbidden())
-        }
+    fn is_prefix_ok(key_prefix: &[u8], key: &Key) -> bool {
+        key_prefix.is_empty() || key.as_bytes().starts_with(key_prefix)
     }
 }
 
@@ -221,16 +345,21 @@ impl FromRequestParts<AppState> for BucketAuth {
             .await?
             .ok_or_else(not_found)?;
 
-        let identity = match resolve(
+        let identity = resolve(
             cred_ref,
             &policy,
             &bucket_id,
             state.root_key().as_ref(),
             now,
-        ) {
-            Ok(id) => id,
-            Err(_) => return Err(unauthorized()),
-        };
+        )
+        .map_err(|_| {
+            tracing::warn!(
+                bucket = %bucket_id.as_str(),
+                has_credential = raw.is_some(),
+                "credential rejected"
+            );
+            unauthorized()
+        })?;
 
         Ok(BucketAuth {
             identity,

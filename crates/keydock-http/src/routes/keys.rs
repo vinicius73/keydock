@@ -7,7 +7,7 @@ use keydock_domain::{CounterOp, StoredValue};
 use keydock_state::AppState;
 use keydock_usecase::KeyService;
 use serde::Deserialize;
-use tracing::{debug, instrument};
+use tracing::{debug, info, instrument};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::blocking;
@@ -180,12 +180,13 @@ pub async fn put_key(
         )
     })
     .await?;
-    debug!(
+    info!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),
         value_kind = ?value.kind,
         value_bytes = value.payload.len(),
         ttl_query = ?params.ttl,
+        has_default_ttl = default_ttl.is_some(),
         "key stored"
     );
     stored_value_response(&value)
@@ -221,7 +222,7 @@ pub async fn delete_key(
     let key_dom2 = key_dom.clone();
     blocking::spawn_usecase(move || KeyService::delete(keys.as_ref(), &bucket_id, &key_dom2))
         .await?;
-    debug!(
+    info!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),
         "key deleted"
@@ -276,11 +277,12 @@ pub async fn patch_key(
         )
     })
     .await?;
-    debug!(
+    info!(
         bucket = %auth.bucket_id.as_str(),
         key_len = key_dom.as_bytes().len(),
         value_kind = ?value.kind,
         ttl_query = ?params.ttl,
+        has_default_ttl = default_ttl.is_some(),
         "counter updated"
     );
     stored_value_response(&value)
