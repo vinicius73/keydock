@@ -95,3 +95,9 @@ Tests inject per-test credentials into the browser with `page.addInitScript()`.
 Do not pass credentials through URLs, checked-in HTML, or console logs.
 
 Each test uses unique bucket data and cleans up buckets best-effort after assertions.
+
+## Behavior TODOs
+
+- TODO(D3): Confirm whether numeric text such as `setText("42")` should continue to be inferred by the backend as an integer while still roundtripping through SDK text reads.
+- TODO(D4): Confirm whether JSON-looking text such as `setText('{"a":1}')` should continue to be inferred by the backend as JSON while still roundtripping through SDK text reads.
+- TODO(D7): Decide whether SDK `getJsonOrNull` should distinguish a stored JSON `null` from a missing key, because both currently resolve to `null`.

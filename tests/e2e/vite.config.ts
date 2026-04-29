@@ -13,6 +13,7 @@ export default defineConfig({
         "scoped-token": resolve(import.meta.dirname, "apps/scoped-token/index.html"),
         transactions: resolve(import.meta.dirname, "apps/transactions/index.html"),
         errors: resolve(import.meta.dirname, "apps/errors/index.html"),
+        "values-golden": resolve(import.meta.dirname, "apps/values-golden/index.html"),
       },
     },
   },
