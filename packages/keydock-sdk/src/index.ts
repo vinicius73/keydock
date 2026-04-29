@@ -1,5 +1,7 @@
 export { BucketHandle } from "./bucket.js";
 export { BucketsNamespace } from "./buckets.js";
+export type { KeydockClient } from "./client.js";
+export { createKeydock } from "./client.js";
 
 export {
   KeydockError,
