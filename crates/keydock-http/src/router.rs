@@ -131,19 +131,23 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle, opts: RouterO
         // Scoped 405 fallback: applies only to the mounted API routes so that
         // `OPTIONS` on other paths still flows through the CORS layer.
         .method_not_allowed_fallback(method_not_allowed_fallback);
+    let mut api_alias_routes = Router::new()
+        .route(&format!("{API_PREFIX}/"), post(buckets::create_bucket))
+        .method_not_allowed_fallback(method_not_allowed_fallback);
 
     let ops_routes = ops_routes.method_not_allowed_fallback(method_not_allowed_fallback);
 
     if opts.rate_limit.enabled {
-        api_routes = api_routes.layer(
-            ServiceBuilder::new()
-                .layer(RealIpLayer::default())
-                .layer(GovernorLayer::default()),
-        );
+        let rate_limit_layer = ServiceBuilder::new()
+            .layer(RealIpLayer::default())
+            .layer(GovernorLayer::default());
+        api_routes = api_routes.layer(rate_limit_layer.clone());
+        api_alias_routes = api_alias_routes.layer(rate_limit_layer);
     }
 
     Router::new()
         .merge(ops_routes)
+        .merge(api_alias_routes)
         .nest(API_PREFIX, api_routes)
         .layer(middleware::from_fn(metrics::track_http_metrics))
         .layer(TraceLayer::new_for_http())

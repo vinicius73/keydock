@@ -25,6 +25,37 @@ async fn create_public_bucket(#[case] email: &str) {
 }
 
 #[rstest]
+#[case::canonical("")]
+#[case::trailing_slash("/")]
+#[tokio::test]
+async fn create_bucket_accepts_collection_path_with_or_without_trailing_slash(
+    #[case] suffix: &str,
+) {
+    let ctx = TestContext::new();
+    let email_prefix = if suffix.is_empty() {
+        "canonical"
+    } else {
+        "trailing-slash"
+    };
+    let payload = BucketSetup {
+        email: format!("{email_prefix}@example.com"),
+        ..BucketSetup::public()
+    };
+    let body = serde_urlencoded::to_string(&payload).expect("encode form");
+
+    let response = ctx
+        .server
+        .post(&format!("/api/v1{suffix}"))
+        .bytes(Bytes::from(body))
+        .content_type("application/x-www-form-urlencoded")
+        .await;
+
+    response.assert_status_ok();
+    let bid = response.text();
+    assert_eq!(Uuid::parse_str(bid.trim()).is_ok(), true);
+}
+
+#[rstest]
 #[case::bare_word("x")]
 #[case::at_only("@")]
 #[case::no_domain_dot("a@b")]
