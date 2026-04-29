@@ -1,24 +1,54 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1.7
 
-FROM rust:1-bookworm AS builder
+ARG RUST_VERSION=1
+ARG ALPINE_VERSION=3.21
+
+FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS builder
 WORKDIR /src
+
+RUN apk add --no-cache \
+    build-base \
+    ca-certificates \
+    cmake \
+    perl \
+    pkgconf \
+    upx
 
 COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY apps ./apps
 COPY crates ./crates
 
-RUN cargo build --release -p keydock
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked \
+    --mount=type=cache,target=/src/target,sharing=locked \
+    cargo fetch --locked \
+    && cargo build --frozen --locked --release -p keydock \
+    && mkdir -p /src/dist \
+    && cp /src/target/release/keydock /src/dist/keydock
 
-FROM debian:bookworm-slim
+RUN upx /src/dist/keydock -k -9 \
+    && install -m 0755 /src/dist/keydock /usr/local/bin/keydock
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+FROM alpine:${ALPINE_VERSION} AS runtime
 
-COPY --from=builder /src/target/release/keydock /usr/local/bin/keydock
-COPY config.example.toml /etc/keydock/keydock.toml
+RUN apk add --no-cache ca-certificates
+
+ARG UID=10001
+RUN addgroup -g "${UID}" keydock \
+    && adduser -D -H -u "${UID}" -G keydock -h /nonexistent -s /sbin/nologin keydock \
+    && mkdir -p /var/lib/keydock/data \
+    && chown -R keydock:keydock /var/lib/keydock
+
+COPY --from=builder /usr/local/bin/keydock /usr/local/bin/keydock
+COPY --chown=keydock:keydock config.example.toml /etc/keydock/keydock.toml
+
+ENV RUST_LOG=info
+
+VOLUME ["/etc/keydock", "/var/lib/keydock/data"]
 
 EXPOSE 8080
 
-ENTRYPOINT ["keydock"]
-CMD ["serve", "-c", "/etc/keydock/keydock.toml"]
+USER keydock
+
+ENTRYPOINT ["/usr/local/bin/keydock"]
+CMD ["serve", "-c", "/etc/keydock/keydock.toml", "--listen", "0.0.0.0:8080", "--data-dir", "/var/lib/keydock/data"]
