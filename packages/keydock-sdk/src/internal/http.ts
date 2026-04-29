@@ -5,7 +5,7 @@ import type { KeydockOptions, OperationOptions } from "../types.js";
 import { resolveAuth } from "./auth.js";
 import { normalizeBaseUrl } from "./encoding.js";
 
-const SAFE_RETRY: KyOptions["retry"] = {
+const SAFE_RETRY: NonNullable<KyOptions["retry"]> = {
   limit: 2,
   methods: ["get", "head"],
   statusCodes: [408, 429, 500, 502, 503, 504],
@@ -13,7 +13,7 @@ const SAFE_RETRY: KyOptions["retry"] = {
   backoffLimit: 3000,
 };
 
-const NO_RETRY: KyOptions["retry"] = {
+const NO_RETRY: NonNullable<KyOptions["retry"]> = {
   limit: 0,
 };
 
@@ -25,16 +25,16 @@ export function buildKy(options: KeydockOptions): KyInstance {
 
   const mergedOptions = {
     timeout: 10_000,
-    retry: SAFE_RETRY,
     ...requestDefaults,
-    prefixUrl: normalizeBaseUrl(options.baseUrl),
-    hooks: mergeBeforeRequestHook(requestDefaults, async (request: Request) => {
+    retry: requestDefaults.retry ?? SAFE_RETRY,
+    prefix: normalizeBaseUrl(options.baseUrl),
+    hooks: mergeBeforeRequestHook(requestDefaults, async ({ request }) => {
       const credential = await resolveAuth(options.auth);
       if (credential !== undefined) {
         request.headers.set("Authorization", `Bearer ${credential}`);
       }
     }),
-  } as KyOptions;
+  } satisfies KyOptions;
 
   return base.extend(mergedOptions);
 }
@@ -53,7 +53,7 @@ export function writeRequestOptions(options: OperationOptions | undefined): KyOp
 function mergeBeforeRequestHook(
   requestDefaults: KyOptions,
   beforeRequest: BeforeRequestHook,
-): KyOptions["hooks"] {
+): NonNullable<KyOptions["hooks"]> {
   const hooks = requestDefaults.hooks ?? {};
   return {
     ...hooks,

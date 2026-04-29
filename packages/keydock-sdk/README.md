@@ -122,7 +122,7 @@ const http = ky.create({
   },
   hooks: {
     beforeRequest: [
-      (request) => {
+      ({ request }) => {
         request.headers.set("x-client", "web-app");
       },
     ],
