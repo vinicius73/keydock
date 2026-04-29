@@ -1,3 +1,5 @@
+export { BucketHandle } from "./bucket.js";
+
 export {
   KeydockError,
   KeydockNetworkError,
