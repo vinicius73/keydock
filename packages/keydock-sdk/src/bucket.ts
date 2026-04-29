@@ -10,16 +10,23 @@ import {
   getTextOrNull,
   increment,
   keyExists,
+  listEntries,
+  listKeys,
   setBytes,
   setJson,
   setText,
 } from "./keys.js";
+import { executeTransaction } from "./transactions.js";
 import type {
   CounterDelta,
   CounterValue,
   JsonValue,
+  KeydockListEntry,
+  ListEntriesOptions,
+  ListKeysOptions,
   OperationOptions,
   ReadOptions,
+  TransactionOperation,
   WriteOptions,
 } from "./types.js";
 
@@ -79,5 +86,20 @@ export class BucketHandle {
 
   increment(key: string, delta: CounterDelta, options?: WriteOptions): Promise<CounterValue> {
     return increment(this.http, this.bucketId, key, delta, options);
+  }
+
+  listKeys(options?: ListKeysOptions): Promise<string[]> {
+    return listKeys(this.http, this.bucketId, options);
+  }
+
+  listEntries(options?: ListEntriesOptions): Promise<KeydockListEntry[]> {
+    return listEntries(this.http, this.bucketId, options);
+  }
+
+  transaction(
+    operations: readonly TransactionOperation[],
+    options?: OperationOptions,
+  ): Promise<void> {
+    return executeTransaction(this.http, this.bucketId, operations, options);
   }
 }

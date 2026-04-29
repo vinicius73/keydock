@@ -8,6 +8,9 @@ import type {
   CounterDelta,
   CounterValue,
   JsonValue,
+  KeydockListEntry,
+  ListEntriesOptions,
+  ListKeysOptions,
   OperationOptions,
   ReadOptions,
   WriteOptions,
@@ -182,8 +185,67 @@ export async function increment(
   }
 }
 
+export async function listKeys(
+  http: KyInstance,
+  bucketId: string,
+  options?: ListKeysOptions,
+): Promise<string[]> {
+  try {
+    const value = await http
+      .get(listPath(bucketId), {
+        ...readRequestOptions(options),
+        searchParams: listSearchParams(options, false),
+      })
+      .json<unknown>();
+
+    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+      throw new KeydockValidationError("Invalid listKeys response");
+    }
+
+    return value;
+  } catch (error) {
+    throw await normalizeOperationError(error);
+  }
+}
+
+export async function listEntries(
+  http: KyInstance,
+  bucketId: string,
+  options?: ListEntriesOptions,
+): Promise<KeydockListEntry[]> {
+  try {
+    const value = await http
+      .get(listPath(bucketId), {
+        ...readRequestOptions(options),
+        searchParams: listSearchParams(options, true),
+      })
+      .json<unknown>();
+
+    if (!Array.isArray(value)) {
+      throw new KeydockValidationError("Invalid listEntries response");
+    }
+
+    return value.map((entry) => {
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string") {
+        throw new KeydockValidationError("Invalid listEntries response");
+      }
+
+      return {
+        key: entry[0],
+        value: entry[1],
+      };
+    });
+  } catch (error) {
+    throw await normalizeOperationError(error);
+  }
+}
+
 export function keyPath(bucketId: string, key: string): string {
   return `${encodeBucketId(bucketId)}/${encodeKey(key)}`;
+}
+
+export function listPath(bucketId: string): string {
+  return `${encodeBucketId(bucketId)}/`;
 }
 
 export function pathWithTtl(path: string, ttlSeconds: number | undefined): string {
@@ -193,6 +255,38 @@ export function pathWithTtl(path: string, ttlSeconds: number | undefined): strin
 
   validateTtlSeconds(ttlSeconds);
   return `${path}?ttl=${ttlSeconds}`;
+}
+
+function listSearchParams(
+  options: ListKeysOptions | undefined,
+  includeValues: boolean,
+): URLSearchParams {
+  const searchParams = new URLSearchParams();
+  searchParams.set("format", "json");
+  searchParams.set("values", includeValues ? "true" : "false");
+
+  if (options?.prefix !== undefined) {
+    searchParams.set("prefix", options.prefix);
+  }
+  if (options?.limit !== undefined) {
+    validateNonNegativeInteger("limit", options.limit);
+    searchParams.set("limit", options.limit.toString());
+  }
+  if (options?.skip !== undefined) {
+    validateNonNegativeInteger("skip", options.skip);
+    searchParams.set("skip", options.skip.toString());
+  }
+  if (options?.reverse !== undefined) {
+    searchParams.set("reverse", options.reverse ? "true" : "false");
+  }
+
+  return searchParams;
+}
+
+function validateNonNegativeInteger(name: string, value: number): void {
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+    throw new KeydockValidationError(`${name} must be a finite integer greater than or equal to 0`);
+  }
 }
 
 export function validateTtlSeconds(ttlSeconds: number): void {
