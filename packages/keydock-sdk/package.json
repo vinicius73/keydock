@@ -1,6 +1,6 @@
 {
   "name": "keydock-sdk",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "license": "AGPL-3.0-only",
   "type": "module",
   "sideEffects": false,
