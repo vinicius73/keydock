@@ -53,9 +53,18 @@ async function run(): Promise<void> {
     const config = readConfig();
     const credentials = requireCredentials(config);
     const anonymous = createKeydock({ baseUrl: config.url });
-    const admin = createKeydock({ baseUrl: config.url, auth: credentials.secretKey });
-    const readClient = createKeydock({ baseUrl: config.url, auth: credentials.readKey });
-    const writeClient = createKeydock({ baseUrl: config.url, auth: credentials.writeKey });
+    const admin = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.secretKey,
+    });
+    const readClient = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.readKey,
+    });
+    const writeClient = createKeydock({
+      baseUrl: config.url,
+      auth: credentials.writeKey,
+    });
 
     setStep("create-result", "running", "creating bucket");
     const createInput = {
