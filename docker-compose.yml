@@ -1,11 +1,69 @@
 services:
   keydock:
     build: .
+    restart: unless-stopped
+    # tini (PID 1) ensures proper signal delivery and zombie reaping when
+    # the app spawns child processes.
+    init: true
+    read_only: true
+    tmpfs:
+      # read_only: true requires an explicit writable /tmp for OS and runtime internals.
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    ulimits:
+      # fjall (LSM-tree) opens many SSTables concurrently; the default soft
+      # limit of 1024 triggers "Too many open files" under sustained load.
+      nofile:
+        soft: 65536
+        hard: 65536
+    labels:
+      org.opencontainers.image.title: "keydock"
+      org.opencontainers.image.version: "${APP_VERSION:-dev}"
+      org.opencontainers.image.source: "https://github.com/vinicius73/keydock"
+    environment:
+      # Visible via `docker inspect`. For stronger isolation, mount a secrets
+      # file and set root_key = { file = "/run/secrets/root_key" } in keydock.toml.
+      KEYDOCK_ROOT_KEY: ${KEYDOCK_ROOT_KEY:?Set KEYDOCK_ROOT_KEY before running docker compose}
+      KEYDOCK_LOG_JSON: "true"
+      RUST_LOG: ${RUST_LOG:-info}
     ports:
-      - "8080:8080"
+      # Loopback-only: expose through a reverse proxy for TLS and external access.
+      - "127.0.0.1:${KEYDOCK_PORT:-8080}:8080"
+      # Prometheus scrape endpoint — requires metrics_listen in keydock.toml:
+      # - "127.0.0.1:${KEYDOCK_METRICS_PORT:-9090}:9090"
     volumes:
-      - keydock-data:/var/lib/keydock/data
       - ./config.example.toml:/etc/keydock/keydock.toml:ro
+      - keydock-data:/var/lib/keydock/data
+    healthcheck:
+      # wget is available via Alpine's busybox — no extra dependency needed.
+      test: [ "CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/health" ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # fjall recovery on large datasets can exceed the default 10s window.
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 256M
+        reservations:
+          memory: 64M
+    networks:
+      - keydock-net
 
 volumes:
   keydock-data:
+
+networks:
+  keydock-net:
+    driver: bridge

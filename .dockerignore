@@ -6,3 +6,5 @@ _docs
 .cursor
 .env
 .env.*
+tests
+justfile
