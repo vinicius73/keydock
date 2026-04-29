@@ -1,4 +1,4 @@
-# @keydock/sdk
+# keydock-sdk
 
 Official TypeScript SDK for Keydock.
 
@@ -9,13 +9,13 @@ Keydock-oriented API for buckets, keys, tokens, and transactions.
 ## Install
 
 ```sh
-npm install @keydock/sdk
+npm install keydock-sdk
 ```
 
 For Bun:
 
 ```sh
-bun add @keydock/sdk
+bun add keydock-sdk
 ```
 
 For Deno and JSR:
@@ -27,7 +27,7 @@ import { createKeydock } from "jsr:@keydock/sdk";
 ## Node.js Or Bun
 
 ```ts
-import { createKeydock } from "@keydock/sdk";
+import { createKeydock } from "keydock-sdk";
 
 const auth = process.env.KEYDOCK_SECRET_KEY;
 if (!auth) {
@@ -74,7 +74,7 @@ long-lived admin credentials, or signing keys to browser code.
 Use short-lived scoped tokens minted by your application backend:
 
 ```ts
-import { createKeydock } from "@keydock/sdk";
+import { createKeydock } from "keydock-sdk";
 
 const keydock = createKeydock({
   baseUrl: "https://keydock.example.com",
@@ -112,7 +112,7 @@ timeouts, or custom `fetch` implementations.
 
 ```ts
 import ky from "ky";
-import { createKeydock } from "@keydock/sdk";
+import { createKeydock } from "keydock-sdk";
 
 const http = ky.create({
   timeout: 5000,
@@ -141,7 +141,7 @@ const keydock = createKeydock({
 Keydock HTTP error responses are normalized into `KeydockError`.
 
 ```ts
-import { KeydockError, createKeydock } from "@keydock/sdk";
+import { KeydockError, createKeydock } from "keydock-sdk";
 
 const keydock = createKeydock({ baseUrl, auth });
 const bucket = keydock.bucket("bucket-id");
