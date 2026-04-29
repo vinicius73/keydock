@@ -42,6 +42,8 @@ RUN addgroup -g "${UID}" keydock \
 COPY --from=builder /usr/local/bin/keydock /usr/local/bin/keydock
 COPY --chown=keydock:keydock config.example.toml /etc/keydock/keydock.toml
 
+# listen and data_dir come from the baked-in keydock.toml config file.
+# Override at runtime with KEYDOCK_HTTP_LISTEN / KEYDOCK_PATHS_DATA_DIR if needed.
 ENV RUST_LOG=info
 
 VOLUME ["/etc/keydock", "/var/lib/keydock/data"]
@@ -51,4 +53,4 @@ EXPOSE 8080
 USER keydock
 
 ENTRYPOINT ["/usr/local/bin/keydock"]
-CMD ["serve", "-c", "/etc/keydock/keydock.toml", "--listen", "0.0.0.0:8080", "--data-dir", "/var/lib/keydock/data"]
+CMD ["serve", "-c", "/etc/keydock/keydock.toml"]

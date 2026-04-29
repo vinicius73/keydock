@@ -113,6 +113,7 @@ The harness supports a few knobs:
 - `K6_MODE`: `auto|local|docker` (default: `auto`)
 - `START_KEYDOCK`: `1|0` (default: `1`)
 - `KEYDOCK_BASE_URL`: required when `START_KEYDOCK=0`
+- `KEYDOCK_ROOT_KEY`: optional server root key when `START_KEYDOCK=1` (default: generated for the spawned process)
 - `WAIT_READY`: `1|0` (default: `1`)
 - `K6_CLEANUP`: `1|0|true|false` (default: `false`). When false, scenarios skip bucket deletion at the end.
 - `ALL_SCENARIOS`: space-separated list for `all` (default: `smoke security regression contracts load`)
@@ -135,6 +136,10 @@ The harness supports a few knobs:
 - `CARGO_BIN`: override cargo binary (default: `cargo`)
 - `KEYDOCK_BIN`: override built binary path (default: `target/release/keydock`)
 - `K6_SUMMARY_DIR`: relative output directory for summaries (default: `tests/k6/results`)
+
+`KEYDOCK_BASE_URL` is consumed by the k6 client. `KEYDOCK_ROOT_KEY` is only passed to
+the temporary Keydock server started by this harness when `START_KEYDOCK=1`; the script
+does not print the generated or provided value.
 
 ### Useful variations
 

@@ -30,6 +30,9 @@ pub struct ServeArgs {
     pub config_path: Option<PathBuf>,
     pub listen: Option<SocketAddr>,
     pub data_dir: Option<PathBuf>,
+    /// When `true`, `KEYDOCK_*` environment overrides are skipped.
+    /// TOML-declared indirection (`root_key = { env/file }`) is unaffected.
+    pub no_env: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,6 +81,9 @@ fn parse_serve(parser: &mut lexopt::Parser) -> Result<ServeArgs, CliError> {
             Long("data-dir") => {
                 let path: PathBuf = parser.value()?.parse()?;
                 args.data_dir = Some(path);
+            }
+            Long("no-env") => {
+                args.no_env = true;
             }
             Short('h') | Long("help") => {
                 print_serve_help();
@@ -142,9 +148,21 @@ keydock serve
 
 Options:
   -c, --config <PATH>   Path to TOML config file
-      --listen <ADDR>     Socket address to listen on (overrides config)
-      --data-dir <PATH>   Data directory (overrides config)
+      --listen <ADDR>   Socket address to listen on (overrides config and env)
+      --data-dir <PATH> Data directory (overrides config and env)
+      --no-env          Skip KEYDOCK_* environment overrides.
+                        TOML-declared indirection (root_key = {{ env/file }}) is unaffected.
   -h, --help            Show this help
+
+Environment (applied after config file, before CLI flags; skipped with --no-env):
+  KEYDOCK_ROOT_KEY                      Root secret (required if not set in TOML)
+  KEYDOCK_HTTP_LISTEN                   Bind address (e.g. 0.0.0.0:8080)
+  KEYDOCK_HTTP_METRICS_LISTEN           Dedicated Prometheus scrape address
+  KEYDOCK_PATHS_DATA_DIR                Data directory path
+  KEYDOCK_LOG_JSON                      Emit JSON logs (true/false)
+  KEYDOCK_GC_INTERVAL_SECS              GC sweep interval in seconds
+  KEYDOCK_RATE_LIMIT_ENABLED            Enable rate limiting (true/false)
+  KEYDOCK_RATE_LIMIT_REQUESTS_PER_HOUR  Requests per IP per hour
 "
     );
 }

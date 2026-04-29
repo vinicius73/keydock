@@ -13,7 +13,7 @@ use tokio::net::TcpListener;
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::EnvFilter;
 
-use keydock_config::{CliError, Command, Config, ServeArgs, write_init_config};
+use keydock_config::{CliError, Command, Config, ConfigSources, ServeArgs, write_init_config};
 use keydock_domain::SigningKey;
 use keydock_fjall::FjallStore;
 use keydock_http::{RateLimitSettings, RouterOptions, build_metrics_router, build_router};
@@ -171,13 +171,12 @@ async fn serve(args: ServeArgs) -> anyhow::Result<()> {
 }
 
 fn load_merged_config(args: &ServeArgs) -> Result<Config, keydock_config::ConfigError> {
-    let base = if let Some(path) = &args.config_path {
-        Config::load_from_file(path)?
-    } else {
-        Config::default()
-    };
-
-    Ok(base.merge_cli(args.listen, args.data_dir.clone()))
+    Config::load_from_sources(&ConfigSources {
+        config_path: args.config_path.as_deref(),
+        listen: args.listen,
+        data_dir: args.data_dir.clone(),
+        apply_env: !args.no_env,
+    })
 }
 
 fn init_tracing(json: bool) -> anyhow::Result<()> {

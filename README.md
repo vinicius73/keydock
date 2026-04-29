@@ -81,10 +81,74 @@ The generated config includes:
 Runtime options:
 
 ```bash
-keydock serve --config ./instance/keydock.toml
+keydock serve -c ./instance/keydock.toml
 keydock serve --listen 127.0.0.1:8080
 keydock serve --data-dir ./instance/data
+keydock serve --no-env          # skip KEYDOCK_* overrides; config file is authoritative
 ```
+
+Configuration is loaded in this order, with later layers overriding earlier ones:
+
+```text
+built-in defaults < TOML config file < KEYDOCK_* environment variables < CLI flags
+```
+
+Use `--no-env` to skip the `KEYDOCK_*` override pass entirely (for example, on bare-metal
+where ambient env vars must not influence the running config). TOML-declared indirection
+(`root_key = { env = "..." }`, `root_key = { file = "..." }`) is unaffected by `--no-env`.
+
+### root_key
+
+`root_key` is required before serving. `keydock init` writes an inline key for local
+instances. Four forms are supported — choose one:
+
+```toml
+root_key = "secret-from-keydock-init"          # inline string (keydock init default)
+root_key = { value = "secret-from-keydock-init" }  # same, explicit table form
+root_key = { env = "PLATFORM_SECRET_VAR" }      # resolved from a named env var at startup
+root_key = { file = "/run/secrets/keydock_root_key" }  # read from a file at startup
+```
+
+The `{ env = "VAR" }` TOML form resolves any env var name you declare — useful when your
+platform manages secrets under names you control. It is different from the `KEYDOCK_ROOT_KEY`
+env var override below: `KEYDOCK_ROOT_KEY` works without any TOML entry and is skipped by
+`--no-env`.
+
+### Environment overrides
+
+These override the TOML file and are skipped when `--no-env` is set:
+
+```text
+KEYDOCK_ROOT_KEY                      Root secret (required if not set in TOML)
+KEYDOCK_HTTP_LISTEN                   Bind address (e.g. 0.0.0.0:8080)
+KEYDOCK_HTTP_METRICS_LISTEN           Dedicated Prometheus scrape address
+KEYDOCK_PATHS_DATA_DIR                Data directory path
+KEYDOCK_LOG_JSON                      Emit JSON logs (true/false)
+KEYDOCK_GC_INTERVAL_SECS              GC sweep interval in seconds
+KEYDOCK_RATE_LIMIT_ENABLED            Enable rate limiting (true/false)
+KEYDOCK_RATE_LIMIT_REQUESTS_PER_HOUR  Requests per IP per hour
+```
+
+### Docker
+
+Simplest single-container run — secret via env var, all other config from the baked-in file:
+
+```bash
+docker run -e KEYDOCK_ROOT_KEY=my-secret -p 8080:8080 ghcr.io/vinicius73/keydock
+```
+
+Custom config file (recommended for persistent deployments):
+
+```bash
+docker run \
+  -e KEYDOCK_ROOT_KEY=my-secret \
+  -v /path/to/keydock.toml:/etc/keydock/keydock.toml:ro \
+  -v /var/lib/keydock/data:/var/lib/keydock/data \
+  -p 8080:8080 \
+  ghcr.io/vinicius73/keydock
+```
+
+See `docker-compose.yml` for a compose example.
 
 ## Authentication
 

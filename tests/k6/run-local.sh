@@ -21,6 +21,7 @@ Environment variables:
   RUN_ID      Identifier used to uniquify test data (default: generated)
   START_KEYDOCK  1|0 (default: 1). When 0, run against an existing service.
   KEYDOCK_BASE_URL  Base URL when START_KEYDOCK=0 (e.g. http://127.0.0.1:8080)
+  KEYDOCK_ROOT_KEY  Optional server root key when START_KEYDOCK=1 (default: generated)
   WAIT_READY  1|0 (default: 1). When 1, probes GET /ready before running k6.
   K6_CLEANUP  1|0|true|false (default: false). When false, do not delete buckets at end of scenarios.
   ALL_SCENARIOS  Space-separated list when scenario=all (default: "smoke security regression contracts load")
@@ -369,9 +370,10 @@ if [[ "${START_KEYDOCK}" == "1" ]]; then
 
   ADDR="127.0.0.1:${PORT}"
   BASE_URL="http://${ADDR}"
+  SERVER_ROOT_KEY="${KEYDOCK_ROOT_KEY:-keydock-k6-${RUN_ID}-root-key}"
 
   info "Starting keydock at ${BASE_URL}..."
-  "${KEYDOCK_BIN}" serve --listen "${ADDR}" --data-dir "${DATA_DIR}" >"${LOG_PATH}" 2>&1 &
+  KEYDOCK_ROOT_KEY="${SERVER_ROOT_KEY}" "${KEYDOCK_BIN}" serve --listen "${ADDR}" --data-dir "${DATA_DIR}" >"${LOG_PATH}" 2>&1 &
   KEYDOCK_PID="$!"
 else
   require_env "KEYDOCK_BASE_URL"
