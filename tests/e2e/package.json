@@ -10,10 +10,10 @@
     "test": "bun run build && playwright test",
     "test:ui": "bun run build:sdk && playwright test --ui",
     "dev": "bun run build:sdk && vite",
-    "fmt": "oxfmt --write \"*.ts\" \"apps/**/*.{ts,vue}\" \"specs/**/*.ts\" \"src/**/*.{ts,vue}\" \"support/**/*.ts\"",
-    "fmt:check": "oxfmt --check \"*.ts\" \"apps/**/*.{ts,vue}\" \"specs/**/*.ts\" \"src/**/*.{ts,vue}\" \"support/**/*.ts\"",
-    "lint": "oxlint --vue-plugin apps specs src support *.ts",
-    "lint:fix": "oxlint --vue-plugin apps specs src support *.ts --fix",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint apps specs src support *.ts",
+    "lint:fix": "oxlint apps specs src support *.ts --fix",
     "fix": "bun run fmt && bun run lint:fix"
   },
   "dependencies": {

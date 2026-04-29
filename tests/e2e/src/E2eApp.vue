@@ -24,7 +24,7 @@ function cardClass(step: StepView): string {
 <template>
   <main class="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-6 py-10">
     <header class="space-y-3">
-      <p class="text-sm font-semibold uppercase tracking-[0.35em] text-cyan-300">Keydock SDK E2E</p>
+      <p class="text-sm font-semibold tracking-[0.35em] text-cyan-300 uppercase">Keydock SDK E2E</p>
       <div class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 class="text-4xl font-semibold tracking-tight">
@@ -45,13 +45,13 @@ function cardClass(step: StepView): string {
         :data-state="step.state"
         :class="cardClass(step)"
       >
-        <p class="text-xs font-semibold uppercase tracking-[0.25em] opacity-70">
+        <p class="text-xs font-semibold tracking-[0.25em] uppercase opacity-70">
           {{ step.label }}
         </p>
         <p
           :data-testid="step.id"
           :data-state="step.state"
-          class="mt-2 break-words font-mono text-sm"
+          class="mt-2 font-mono text-sm break-words"
           v-bind="step.attrs"
         >
           {{ step.value }}

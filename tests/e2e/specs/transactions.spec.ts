@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import type { KeydockE2eConfig } from "../src/browser-config.js";
 import {
   createBucket,
   createClient,
@@ -8,7 +9,6 @@ import {
   type CreatedBucketFixture,
 } from "../support/sdk-admin.js";
 import { randomKey, uniqueBucketData } from "../support/test-data.js";
-import type { KeydockE2eConfig } from "../src/browser-config.js";
 
 test.describe("transaction SDK browser flow", () => {
   let fixture: CreatedBucketFixture | undefined;

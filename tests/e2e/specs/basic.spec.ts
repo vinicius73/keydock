@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import type { KeydockE2eConfig } from "../src/browser-config.js";
 import {
   createClient,
   deleteBucketBestEffort,
@@ -7,7 +8,6 @@ import {
   type CreatedBucketFixture,
 } from "../support/sdk-admin.js";
 import { uniqueBucketData } from "../support/test-data.js";
-import type { KeydockE2eConfig } from "../src/browser-config.js";
 
 test.describe("basic SDK browser roundtrip", () => {
   let cleanupTarget: CreatedBucketFixture | undefined;

@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": [
+    ".playwright/**",
+    "dist/**",
+    "node_modules/**",
+    "playwright-report/**",
+    "test-results/**",
+    "bun.lock"
+  ],
+  "sortImports": true,
+  "sortTailwindcss": {
+    "stylesheet": "./src/style.css"
+  }
+}
