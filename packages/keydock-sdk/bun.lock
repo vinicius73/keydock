@@ -4,13 +4,14 @@
   "workspaces": {
     "": {
       "name": "@keydock/sdk",
-      "dependencies": {
-        "ky": "2.0.2",
-      },
       "devDependencies": {
+        "ky": "2.0.2",
         "oxfmt": "^0.47.0",
         "oxlint": "^1.62.0",
         "typescript": "latest",
+      },
+      "peerDependencies": {
+        "ky": "^2.0.0",
       },
     },
   },

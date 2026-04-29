@@ -17,13 +17,14 @@
   "engines": {
     "node": ">=22"
   },
-  "dependencies": {
-    "ky": "2.0.2"
+  "peerDependencies": {
+    "ky": "^2.0.0"
   },
   "devDependencies": {
+    "ky": "2.0.2",
     "oxfmt": "^0.47.0",
     "oxlint": "^1.62.0",
-    "typescript": "latest"
+    "typescript": "^6.0.3"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
