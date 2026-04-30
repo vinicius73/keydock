@@ -46,9 +46,9 @@ async fn patch_int_plus_int() {
     let path = format!("/api/v1/{bid}/n");
 
     ctx.server
-        .put(&path)
+        .patch(&path)
         .authorization_bearer("w")
-        .text("10")
+        .text("+10")
         .await
         .assert_status_ok();
 
@@ -69,9 +69,9 @@ async fn patch_int_plus_float() {
     let path = format!("/api/v1/{bid}/pf");
 
     ctx.server
-        .put(&path)
+        .patch(&path)
         .authorization_bearer("w")
-        .text("10")
+        .text("+10")
         .await
         .assert_status_ok();
 
@@ -93,9 +93,9 @@ async fn patch_float_plus_int() {
     let path = format!("/api/v1/{bid}/fi");
 
     ctx.server
-        .put(&path)
+        .patch(&path)
         .authorization_bearer("w")
-        .text("1.5")
+        .text("+1.5")
         .await
         .assert_status_ok();
 

@@ -2,6 +2,7 @@
 
 use axum::http::StatusCode;
 use axum::http::header;
+use bytes::Bytes;
 use keydock_testkit::{BucketSetup, TestContext, api_error_body_json};
 use pretty_assertions::assert_eq;
 use serde_json::json;
@@ -123,7 +124,7 @@ async fn list_values_json_native_json_value() {
     ctx.server
         .post(&format!("/api/v1/{bid}/jk"))
         .content_type("application/json")
-        .text(body)
+        .bytes(Bytes::copy_from_slice(body.as_bytes()))
         .await
         .assert_status_ok();
 
@@ -154,7 +155,7 @@ async fn list_values_jsonl() {
     list.assert_status_ok();
     list.assert_header(header::CONTENT_TYPE, "application/x-ndjson");
     let text = list.text();
-    assert_eq!(text.trim(), r#"["x",42]"#);
+    assert_eq!(text.trim(), r#"["x","42"]"#);
 }
 
 #[tokio::test]

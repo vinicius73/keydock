@@ -1,6 +1,7 @@
 //! Key CRUD (HTTP integration).
 
 use axum::http::header;
+use bytes::Bytes;
 use keydock_testkit::{BucketSetup, TestContext, api_error_body_json};
 use rstest::rstest;
 
@@ -38,7 +39,7 @@ async fn put_json_get_roundtrip() {
         .put(&path)
         .authorization_bearer("w")
         .content_type("application/json")
-        .text(body)
+        .bytes(Bytes::copy_from_slice(body.as_bytes()))
         .await;
     put.assert_status_ok();
     put.assert_header(header::CONTENT_TYPE, "application/json");

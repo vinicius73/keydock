@@ -193,11 +193,26 @@ fn content_type_is_json(ct: &str) -> bool {
     lower.contains("application/json")
 }
 
+fn content_type_is_text_plain(ct: &str) -> bool {
+    let lower = ct.to_ascii_lowercase();
+    lower
+        .split(';')
+        .next()
+        .is_some_and(|mime| mime.trim() == "text/plain")
+}
+
 fn infer_value_kind(body: &[u8], content_type: Option<&str>) -> ValueKind {
-    if let Some(ct) = content_type
-        && content_type_is_json(ct)
-    {
-        return ValueKind::Json;
+    if let Some(ct) = content_type {
+        if content_type_is_json(ct) {
+            return ValueKind::Json;
+        }
+        if content_type_is_text_plain(ct) {
+            return if std::str::from_utf8(body).is_ok() {
+                ValueKind::Utf8
+            } else {
+                ValueKind::Raw
+            };
+        }
     }
     if let Ok(s) = std::str::from_utf8(body) {
         let t = s.trim();
@@ -309,6 +324,10 @@ mod tests {
         Some("application/json; charset=utf-8"),
         ValueKind::Json
     )]
+    #[case::text_plain_integer(b"42", Some("text/plain; charset=utf-8"), ValueKind::Utf8)]
+    #[case::text_plain_float(b"3.14", Some("text/plain; charset=utf-8"), ValueKind::Utf8)]
+    #[case::text_plain_jsonish(br#"{"a":1}"#, Some("text/plain; charset=utf-8"), ValueKind::Utf8)]
+    #[case::text_plain_raw(b"\xff\xfe", Some("text/plain; charset=utf-8"), ValueKind::Raw)]
     #[case(b"true", None, ValueKind::Json)]
     #[case(b"inf", None, ValueKind::Utf8)]
     #[case(b"", None, ValueKind::Utf8)]

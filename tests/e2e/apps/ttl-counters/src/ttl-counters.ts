@@ -130,10 +130,10 @@ async function run(): Promise<void> {
       counterSummary(await bucket.increment("counter:negative", -3)),
     );
 
-    await bucket.setText("counter:add", "10");
+    await bucket.increment("counter:add", 10);
     setStep("counter-add-int", "done", counterSummary(await bucket.increment("counter:add", 5)));
 
-    await bucket.setText("counter:float", "10");
+    await bucket.increment("counter:float", 10);
     setStep(
       "counter-int-plus-float",
       "done",

@@ -6,7 +6,9 @@
 //! when no GET test is touched.
 
 use axum::http::{Method, StatusCode, header};
+use bytes::Bytes;
 use keydock_testkit::{BucketSetup, TestContext};
+use pretty_assertions::assert_eq;
 
 // HEAD responses must not carry a body; the error envelope is
 // unavailable, but status codes mirror GET exactly, which is what clients check.
@@ -30,7 +32,7 @@ async fn head_key_existing_returns_200_with_content_type_and_empty_body() {
         .await;
     response.assert_status_ok();
     response.assert_header(header::CONTENT_TYPE, "text/plain; charset=utf-8");
-    assert!(response.as_bytes().is_empty());
+    assert_eq!(response.as_bytes().is_empty(), true);
 }
 
 #[tokio::test]
@@ -67,7 +69,7 @@ async fn head_key_json_content_type_matches_get() {
         .put(&format!("/api/v1/{bid}/jk"))
         .authorization_bearer("w")
         .content_type("application/json")
-        .text(r#"{"ok":true}"#)
+        .bytes(Bytes::from_static(br#"{"ok":true}"#))
         .await
         .assert_status_ok();
 
