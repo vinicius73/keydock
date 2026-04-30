@@ -8,10 +8,7 @@ import {
   normalizeOperationError,
   parseCounterResponse,
 } from "./internal/response.js";
-import {
-  validateNonNegativeInteger,
-  validateTtlSeconds,
-} from "./internal/validation.js";
+import { validateNonNegativeInteger, validateTtlSeconds } from "./internal/validation.js";
 import type {
   CounterDelta,
   CounterValue,
@@ -31,9 +28,7 @@ export async function getText(
   options?: OperationOptions,
 ): Promise<string> {
   try {
-    return await http
-      .get(keyPath(bucketId, key), readRequestOptions(options))
-      .text();
+    return await http.get(keyPath(bucketId, key), readRequestOptions(options)).text();
   } catch (error) {
     throw await normalizeOperationError(error);
   }
@@ -45,9 +40,7 @@ export async function getTextOrNull(
   key: string,
   options?: OperationOptions,
 ): Promise<string | null> {
-  return orNull(() =>
-    http.get(keyPath(bucketId, key), readRequestOptions(options)).text(),
-  );
+  return orNull(() => http.get(keyPath(bucketId, key), readRequestOptions(options)).text());
 }
 
 export async function getJson<T = unknown>(
@@ -78,12 +71,18 @@ export async function getJsonOrNull<T = unknown>(
   key: string,
   options?: ReadOptions<T>,
 ): Promise<T | null | undefined> {
-  return orUndefined(async () => {
+  try {
     const value = await http
       .get(keyPath(bucketId, key), readRequestOptions(options))
       .json<unknown>();
     return options?.parse === undefined ? (value as T) : options.parse(value);
-  });
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return undefined;
+    }
+
+    throw await normalizeOperationError(error);
+  }
 }
 
 export async function getBytes(
@@ -93,10 +92,7 @@ export async function getBytes(
   options?: OperationOptions,
 ): Promise<Uint8Array> {
   try {
-    const response = await http.get(
-      keyPath(bucketId, key),
-      readRequestOptions(options),
-    );
+    const response = await http.get(keyPath(bucketId, key), readRequestOptions(options));
     return new Uint8Array(await response.arrayBuffer());
   } catch (error) {
     throw await normalizeOperationError(error);
@@ -110,10 +106,7 @@ export async function getBytesOrNull(
   options?: OperationOptions,
 ): Promise<Uint8Array | null> {
   return orNull(async () => {
-    const response = await http.get(
-      keyPath(bucketId, key),
-      readRequestOptions(options),
-    );
+    const response = await http.get(keyPath(bucketId, key), readRequestOptions(options));
     return new Uint8Array(await response.arrayBuffer());
   });
 }
@@ -224,10 +217,7 @@ export async function listKeys(
       })
       .json<unknown>();
 
-    if (
-      !Array.isArray(value) ||
-      !value.every((item) => typeof item === "string")
-    ) {
+    if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
       throw new KeydockValidationError("Invalid listKeys response");
     }
 
@@ -255,11 +245,7 @@ export async function listEntries(
     }
 
     return value.map((entry) => {
-      if (
-        !Array.isArray(entry) ||
-        entry.length !== 2 ||
-        typeof entry[0] !== "string"
-      ) {
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string") {
         throw new KeydockValidationError("Invalid listEntries response");
       }
 
@@ -281,10 +267,7 @@ export function listPath(bucketId: string): string {
   return `${encodeBucketId(bucketId)}/`;
 }
 
-export function pathWithTtl(
-  path: string,
-  ttlSeconds: number | undefined,
-): string {
+export function pathWithTtl(path: string, ttlSeconds: number | undefined): string {
   if (ttlSeconds === undefined) {
     return path;
   }
@@ -348,9 +331,7 @@ async function writeValue(
   bucketId: string,
   key: string,
   options: WriteOptions | undefined,
-  value:
-    | { body: BodyInit | Uint8Array; contentType: string }
-    | { json: JsonValue },
+  value: { body: BodyInit | Uint8Array; contentType: string } | { json: JsonValue },
 ): Promise<void> {
   try {
     const requestOptions = writeRequestOptions(options);
@@ -380,17 +361,11 @@ function toUploadBody(value: BodyInit | Uint8Array): BodyInit {
   }
 
   if (value.buffer instanceof ArrayBuffer) {
-    if (
-      value.byteOffset === 0 &&
-      value.byteLength === value.buffer.byteLength
-    ) {
+    if (value.byteOffset === 0 && value.byteLength === value.buffer.byteLength) {
       return value.buffer;
     }
 
-    return value.buffer.slice(
-      value.byteOffset,
-      value.byteOffset + value.byteLength,
-    );
+    return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
   }
 
   const copy = new Uint8Array(value.byteLength);
@@ -404,20 +379,6 @@ async function orNull<T>(operation: () => Promise<T>): Promise<T | null> {
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
-    }
-
-    throw await normalizeOperationError(error);
-  }
-}
-
-async function orUndefined<T>(
-  operation: () => Promise<T>,
-): Promise<T | undefined> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return undefined;
     }
 
     throw await normalizeOperationError(error);

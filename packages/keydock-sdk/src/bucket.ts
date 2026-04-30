@@ -45,10 +45,7 @@ export class BucketHandle {
     return getText(this.http, this.bucketId, key, options);
   }
 
-  getTextOrNull(
-    key: string,
-    options?: OperationOptions,
-  ): Promise<string | null> {
+  getTextOrNull(key: string, options?: OperationOptions): Promise<string | null> {
     return getTextOrNull(this.http, this.bucketId, key, options);
   }
 
@@ -56,10 +53,7 @@ export class BucketHandle {
     return getJson<T>(this.http, this.bucketId, key, options);
   }
 
-  getJsonOrNull<T = unknown>(
-    key: string,
-    options?: ReadOptions<T>,
-  ): Promise<T | null | undefined> {
+  getJsonOrNull<T = unknown>(key: string, options?: ReadOptions<T>): Promise<T | null | undefined> {
     return getJsonOrNull<T>(this.http, this.bucketId, key, options);
   }
 
@@ -67,10 +61,7 @@ export class BucketHandle {
     return getBytes(this.http, this.bucketId, key, options);
   }
 
-  getBytesOrNull(
-    key: string,
-    options?: OperationOptions,
-  ): Promise<Uint8Array | null> {
+  getBytesOrNull(key: string, options?: OperationOptions): Promise<Uint8Array | null> {
     return getBytesOrNull(this.http, this.bucketId, key, options);
   }
 
@@ -78,11 +69,7 @@ export class BucketHandle {
     return setText(this.http, this.bucketId, key, value, options);
   }
 
-  setJson(
-    key: string,
-    value: JsonValue,
-    options?: WriteOptions,
-  ): Promise<void> {
+  setJson(key: string, value: JsonValue, options?: WriteOptions): Promise<void> {
     return setJson(this.http, this.bucketId, key, value, options);
   }
 
@@ -102,11 +89,7 @@ export class BucketHandle {
     return keyExists(this.http, this.bucketId, key, options);
   }
 
-  increment(
-    key: string,
-    delta: CounterDelta,
-    options?: WriteOptions,
-  ): Promise<CounterValue> {
+  increment(key: string, delta: CounterDelta, options?: WriteOptions): Promise<CounterValue> {
     return increment(this.http, this.bucketId, key, delta, options);
   }
 

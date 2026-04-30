@@ -188,25 +188,17 @@ impl KeyService {
     }
 }
 
-fn content_type_is_json(ct: &str) -> bool {
-    let lower = ct.to_ascii_lowercase();
-    lower.contains("application/json")
-}
-
-fn content_type_is_text_plain(ct: &str) -> bool {
-    let lower = ct.to_ascii_lowercase();
-    lower
-        .split(';')
-        .next()
-        .is_some_and(|mime| mime.trim() == "text/plain")
-}
-
 fn infer_value_kind(body: &[u8], content_type: Option<&str>) -> ValueKind {
     if let Some(ct) = content_type {
-        if content_type_is_json(ct) {
+        let lower = ct.to_ascii_lowercase();
+        if lower.contains("application/json") {
             return ValueKind::Json;
         }
-        if content_type_is_text_plain(ct) {
+        if lower
+            .split(';')
+            .next()
+            .is_some_and(|mime| mime.trim() == "text/plain")
+        {
             return if std::str::from_utf8(body).is_ok() {
                 ValueKind::Utf8
             } else {

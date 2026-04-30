@@ -88,11 +88,9 @@ async function run(): Promise<void> {
     await writeBucket.setText("spaces", "  hi  ");
     setStep("setText-spaces", "done", await readBucket.getText("spaces"));
 
-    // The backend infers this as an integer internally; the SDK text API must still roundtrip it.
     await writeBucket.setText("numeric", "42");
     setStep("setText-numeric", "done", await readBucket.getText("numeric"));
 
-    // JSON-looking text is inferred as JSON by the backend, but remains readable through getText.
     await writeBucket.setText("jsonish", '{"a":1}');
     setStep("setText-jsonish", "done", await readBucket.getText("jsonish"));
 
