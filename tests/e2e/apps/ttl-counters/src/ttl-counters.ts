@@ -9,7 +9,13 @@ import {
   sleep,
   withTemporaryBucket,
 } from "../../../src/sdk-test-helpers.js";
-import { mountE2eApp, renderError, setStatus, setStep, setText } from "../../../src/ui.js";
+import {
+  mountE2eApp,
+  renderError,
+  setStatus,
+  setStep,
+  setText,
+} from "../../../src/ui.js";
 
 const steps = [
   { id: "create-result", label: "Create" },
@@ -72,16 +78,32 @@ async function run(): Promise<void> {
     await bucket.increment("counter:ttl", 1, { ttlSeconds: 1 });
     await sleep(2_000);
 
-    setStep("setText-ttl-expires", "done", String(await bucket.getTextOrNull("ttl:text")));
-    setStep("setJson-ttl-expires", "done", String(await bucket.getJsonOrNull("ttl:json")));
-    setStep("setBytes-ttl-expires", "done", String(await bucket.getBytesOrNull("ttl:bytes")));
+    setStep(
+      "setText-ttl-expires",
+      "done",
+      String(await bucket.getTextOrNull("ttl:text")),
+    );
+    setStep(
+      "setJson-ttl-expires",
+      "done",
+      String(await bucket.getJsonOrNull("ttl:json")),
+    );
+    setStep(
+      "setBytes-ttl-expires",
+      "done",
+      String(await bucket.getBytesOrNull("ttl:bytes")),
+    );
     setStep("ttl-zero-no-expiry", "done", await bucket.getText("ttl:zero"));
     setStep(
       "ttl-expired-excluded-from-list",
       "done",
       JSON.stringify(await bucket.listKeys({ prefix: "ttl:list" })),
     );
-    setStep("counter-with-ttl", "done", String(await bucket.getTextOrNull("counter:ttl")));
+    setStep(
+      "counter-with-ttl",
+      "done",
+      String(await bucket.getTextOrNull("counter:ttl")),
+    );
 
     await bucket.setText("ttl:renewal", "v", { ttlSeconds: 3 });
     await sleep(1_000);
@@ -115,7 +137,11 @@ async function run(): Promise<void> {
         const tempBucket = client.bucket(bucketId);
         await tempBucket.setText("default-zero", "v");
         await sleep(2_000);
-        setStep("default-ttl-zero", "done", await tempBucket.getText("default-zero"));
+        setStep(
+          "default-ttl-zero",
+          "done",
+          await tempBucket.getText("default-zero"),
+        );
       },
     );
 
@@ -131,7 +157,11 @@ async function run(): Promise<void> {
     );
 
     await bucket.increment("counter:add", 10);
-    setStep("counter-add-int", "done", counterSummary(await bucket.increment("counter:add", 5)));
+    setStep(
+      "counter-add-int",
+      "done",
+      counterSummary(await bucket.increment("counter:add", 5)),
+    );
 
     await bucket.increment("counter:float", 10);
     setStep(
@@ -148,10 +178,16 @@ async function run(): Promise<void> {
     setStep(
       "counter-bigint-unsafe",
       "done",
-      counterSummary(await bucket.increment("counter:bigint-unsafe", 9_007_199_254_740_993n)),
+      counterSummary(
+        await bucket.increment("counter:bigint-unsafe", 9_007_199_254_740_993n),
+      ),
     );
 
-    setStep("counter-zero-rejected", "done", await captureAnyError(() => bucket.increment("c", 0)));
+    setStep(
+      "counter-zero-rejected",
+      "done",
+      await captureAnyError(() => bucket.increment("c", 0)),
+    );
     setStep(
       "counter-nan-rejected",
       "done",
@@ -159,8 +195,14 @@ async function run(): Promise<void> {
     );
 
     await bucket.setText("counter:non-numeric", "hello");
-    const nonNumeric = await captureKeydockError(() => bucket.increment("counter:non-numeric", 1));
-    setStep("counter-non-numeric", "done", `${nonNumeric.name}:${nonNumeric.status}`);
+    const nonNumeric = await captureKeydockError(() =>
+      bucket.increment("counter:non-numeric", 1),
+    );
+    setStep(
+      "counter-non-numeric",
+      "done",
+      `${nonNumeric.name}:${nonNumeric.status}`,
+    );
 
     setStatus("done", "done");
   } catch (error) {
@@ -170,6 +212,8 @@ async function run(): Promise<void> {
 
 function counterSummary(counter: CounterValue): string {
   const numberPart =
-    "number" in counter && counter.number !== undefined ? `,number:${counter.number}` : "";
+    "number" in counter && counter.number !== undefined
+      ? `,number:${counter.number}`
+      : "";
   return `raw:${counter.raw},kind:${counter.kind}${numberPart}`;
 }

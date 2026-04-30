@@ -29,21 +29,31 @@ describe("key operations", () => {
     ).resolves.toEqual({
       name: "Ana",
     });
-    await expect(bucket.getBytes("bytes")).resolves.toEqual(new Uint8Array([1, 2, 3]));
+    await expect(bucket.getBytes("bytes")).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
   });
 
   test("getJsonOrNull distinguishes missing keys from JSON null values", async () => {
     const notFound = createBucket(() =>
-      Response.json({ error: { code: 404, message: "not_found" } }, { status: 404 }),
+      Response.json(
+        { error: { code: 404, message: "not_found" } },
+        { status: 404 },
+      ),
     );
     const jsonNull = createBucket(() => Response.json(null));
     const forbidden = createBucket(() =>
-      Response.json({ error: { code: 403, message: "forbidden" } }, { status: 403 }),
+      Response.json(
+        { error: { code: 403, message: "forbidden" } },
+        { status: 403 },
+      ),
     );
 
     await expect(notFound.getJsonOrNull("missing")).resolves.toBeUndefined();
     await expect(jsonNull.getJsonOrNull("present-null")).resolves.toBeNull();
-    await expect(forbidden.getJsonOrNull("secret")).rejects.toBeInstanceOf(KeydockError);
+    await expect(forbidden.getJsonOrNull("secret")).rejects.toBeInstanceOf(
+      KeydockError,
+    );
   });
 
   test("write methods use correct method, path, content type, and ttl", async () => {
@@ -84,16 +94,25 @@ describe("key operations", () => {
     const bucket = createBucket(async (request) => {
       requests.push(await recordRequest(request));
       if (request.method === "HEAD" && request.url.endsWith("/missing")) {
-        return Response.json({ error: { code: 404, message: "not_found" } }, { status: 404 });
+        return Response.json(
+          { error: { code: 404, message: "not_found" } },
+          { status: 404 },
+        );
       }
-      return new Response(null, { status: request.method === "DELETE" ? 204 : 200 });
+      return new Response(null, {
+        status: request.method === "DELETE" ? 204 : 200,
+      });
     });
 
     await expect(bucket.exists("present")).resolves.toBe(true);
     await expect(bucket.exists("missing")).resolves.toBe(false);
     await expect(bucket.delete("present")).resolves.toBeUndefined();
 
-    expect(requests.map((request) => request.method)).toEqual(["HEAD", "HEAD", "DELETE"]);
+    expect(requests.map((request) => request.method)).toEqual([
+      "HEAD",
+      "HEAD",
+      "DELETE",
+    ]);
   });
 
   test("increment serializes deltas and preserves counter responses", async () => {
@@ -122,21 +141,27 @@ describe("key operations", () => {
   test("local validation rejects invalid ttl and counter deltas", async () => {
     const bucket = createBucket(() => new Response("ok"));
 
-    await expect(bucket.setText("k", "v", { ttlSeconds: 1.5 })).rejects.toBeInstanceOf(
+    await expect(
+      bucket.setText("k", "v", { ttlSeconds: 1.5 }),
+    ).rejects.toBeInstanceOf(KeydockValidationError);
+    await expect(bucket.increment("views", 0)).rejects.toBeInstanceOf(
       KeydockValidationError,
     );
-    await expect(bucket.increment("views", 0)).rejects.toBeInstanceOf(KeydockValidationError);
     await expect(bucket.increment("views", Number.NaN)).rejects.toBeInstanceOf(
       KeydockValidationError,
     );
   });
 
   test("write request options disable retries", () => {
-    expect(writeRequestOptions({ request: { retry: { limit: 5 } } }).retry).toEqual({ limit: 0 });
+    expect(
+      writeRequestOptions({ request: { retry: { limit: 5 } } }).retry,
+    ).toEqual({ limit: 0 });
   });
 });
 
-function createBucket(fetch: (request: Request) => Response | Promise<Response>): BucketHandle {
+function createBucket(
+  fetch: (request: Request) => Response | Promise<Response>,
+): BucketHandle {
   const http = buildKy({
     baseUrl: "https://keydock.example.com",
     request: {
