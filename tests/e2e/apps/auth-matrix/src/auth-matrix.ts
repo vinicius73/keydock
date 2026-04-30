@@ -24,6 +24,7 @@ const steps = [
   { id: "writeKey-list", label: "Write Key List" },
   { id: "anon-read", label: "Anonymous Read" },
   { id: "anon-write", label: "Anonymous Write" },
+  { id: "anon-delete", label: "Anonymous Delete" },
   { id: "wrong-cred", label: "Wrong Credential" },
   { id: "missing-bucket", label: "Missing Bucket" },
   { id: "public-anon-read", label: "Public Read" },
@@ -123,6 +124,12 @@ async function run(): Promise<void> {
 
     const anonWrite = await captureKeydockError(() => anonymousBucket.setText("anon-denied", "v"));
     setStep("anon-write", "done", `${anonWrite.name}:${anonWrite.status}`);
+
+    await adminBucket.setText("anon-delete-denied", "v");
+    const anonDelete = await captureKeydockError(() =>
+      anonymousBucket.delete("anon-delete-denied"),
+    );
+    setStep("anon-delete", "done", `${anonDelete.name}:${anonDelete.status}`);
 
     const wrongRead = await captureKeydockError(() => wrongBucket.getText("read-target"));
     setStep("wrong-cred", "done", `${wrongRead.name}:${wrongRead.status}`);

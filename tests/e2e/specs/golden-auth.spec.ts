@@ -60,6 +60,7 @@ test.describe("auth matrix golden SDK browser coverage", () => {
     await expect(page.getByTestId("writeKey-list")).toHaveText("KeydockError:403");
     await expect(page.getByTestId("anon-read")).toHaveText("KeydockError:401");
     await expect(page.getByTestId("anon-write")).toHaveText("KeydockError:401");
+    await expect(page.getByTestId("anon-delete")).toHaveText("KeydockError:401");
     await expect(page.getByTestId("wrong-cred")).toHaveText("KeydockError:401");
     await expect(page.getByTestId("missing-bucket")).toHaveText("KeydockError:404");
     await expect(page.getByTestId("public-anon-read")).toHaveText("ok");
