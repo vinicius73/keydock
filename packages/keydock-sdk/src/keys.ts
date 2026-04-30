@@ -59,13 +59,19 @@ export async function getJson<T = unknown>(
   }
 }
 
+/**
+ * Reads JSON and distinguishes a missing key from a stored JSON null value.
+ *
+ * Returns `undefined` only when the backend returns 404. A present key whose
+ * JSON payload is `null` resolves to `null`.
+ */
 export async function getJsonOrNull<T = unknown>(
   http: KyInstance,
   bucketId: string,
   key: string,
   options?: ReadOptions<T>,
-): Promise<T | null> {
-  return orNull(async () => {
+): Promise<T | null | undefined> {
+  return orUndefined(async () => {
     const value = await http
       .get(keyPath(bucketId, key), readRequestOptions(options))
       .json<unknown>();
@@ -367,6 +373,18 @@ async function orNull<T>(operation: () => Promise<T>): Promise<T | null> {
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
+    }
+
+    throw await normalizeOperationError(error);
+  }
+}
+
+async function orUndefined<T>(operation: () => Promise<T>): Promise<T | undefined> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return undefined;
     }
 
     throw await normalizeOperationError(error);

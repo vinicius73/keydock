@@ -101,8 +101,8 @@ Each test uses unique bucket data and cleans up buckets best-effort after assert
 - TODO(D5): Document clearly that a bucket with only `secretKey` configured allows anonymous read, write, and enumerate operations, while anonymous delete remains unauthenticated and returns `401`; configure `readKey` and `writeKey` to restrict public access.
 - TODO(D2): Decide whether the backend should reject token creation with an empty permission set; the SDK currently rejects `permissions: []` client-side with `KeydockValidationError`.
 - TODO(D1): Decide whether empty transactions should be allowed as backend no-ops or rejected consistently; the SDK currently rejects `transaction([])` client-side with `KeydockValidationError`.
-- TODO(D7): Decide whether SDK `getJsonOrNull` should distinguish a stored JSON `null` from a missing key, because both currently resolve to `null`.
 
 ## Behavior Decisions
 
 - Numeric or JSON-looking values written through SDK `setText` are stored as UTF-8 text because the backend honors `Content-Type: text/plain`; numeric counter seeds should use `increment`.
+- SDK `getJsonOrNull` returns `undefined` for a missing key and returns `null` only for a stored JSON `null` value.

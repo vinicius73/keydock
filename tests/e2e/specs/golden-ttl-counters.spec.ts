@@ -48,7 +48,7 @@ test.describe("TTL and counters golden SDK browser coverage", () => {
     await expect(page.getByTestId("app-status")).toHaveText("done");
     await expect(page.getByTestId("create-result")).toHaveText("bucket created");
     await expect(page.getByTestId("setText-ttl-expires")).toHaveText("null");
-    await expect(page.getByTestId("setJson-ttl-expires")).toHaveText("null");
+    await expect(page.getByTestId("setJson-ttl-expires")).toHaveText("undefined");
     await expect(page.getByTestId("setBytes-ttl-expires")).toHaveText("null");
     await expect(page.getByTestId("ttl-zero-no-expiry")).toHaveText("v");
     await expect(page.getByTestId("ttl-renewal")).toHaveText("v");

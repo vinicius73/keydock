@@ -32,15 +32,17 @@ describe("key operations", () => {
     await expect(bucket.getBytes("bytes")).resolves.toEqual(new Uint8Array([1, 2, 3]));
   });
 
-  test("getJsonOrNull returns null only for 404", async () => {
+  test("getJsonOrNull distinguishes missing keys from JSON null values", async () => {
     const notFound = createBucket(() =>
       Response.json({ error: { code: 404, message: "not_found" } }, { status: 404 }),
     );
+    const jsonNull = createBucket(() => Response.json(null));
     const forbidden = createBucket(() =>
       Response.json({ error: { code: 403, message: "forbidden" } }, { status: 403 }),
     );
 
-    await expect(notFound.getJsonOrNull("missing")).resolves.toBeNull();
+    await expect(notFound.getJsonOrNull("missing")).resolves.toBeUndefined();
+    await expect(jsonNull.getJsonOrNull("present-null")).resolves.toBeNull();
     await expect(forbidden.getJsonOrNull("secret")).rejects.toBeInstanceOf(KeydockError);
   });
 

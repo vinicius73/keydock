@@ -57,7 +57,7 @@ test.describe("values golden SDK browser coverage", () => {
     await expect(page.getByTestId("getJsonOrNull-null-key")).toHaveText("null");
     await expect(page.getByTestId("setBytes-roundtrip")).toHaveText("equal");
     await expect(page.getByTestId("getTextOrNull-miss")).toHaveText("null");
-    await expect(page.getByTestId("getJsonOrNull-miss")).toHaveText("null");
+    await expect(page.getByTestId("getJsonOrNull-miss")).toHaveText("undefined");
     await expect(page.getByTestId("getBytesOrNull-miss")).toHaveText("null");
     await expect(page.getByTestId("getTextOrNull-forbidden")).toHaveText("KeydockError:403");
     await expect(page.getByTestId("key-slash")).toHaveText("v");

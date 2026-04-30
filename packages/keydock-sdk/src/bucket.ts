@@ -53,7 +53,7 @@ export class BucketHandle {
     return getJson<T>(this.http, this.bucketId, key, options);
   }
 
-  getJsonOrNull<T = unknown>(key: string, options?: ReadOptions<T>): Promise<T | null> {
+  getJsonOrNull<T = unknown>(key: string, options?: ReadOptions<T>): Promise<T | null | undefined> {
     return getJsonOrNull<T>(this.http, this.bucketId, key, options);
   }
 

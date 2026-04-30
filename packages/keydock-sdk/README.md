@@ -207,6 +207,9 @@ const maybeUser = await bucket.getJsonOrNull<{ name: string }>("users/missing");
 const exists = await bucket.exists("message");
 ```
 
+`getJsonOrNull` returns `undefined` when the key is missing. A stored JSON
+`null` value still returns `null`.
+
 Keys are logical strings. The SDK percent-encodes them before placing them in HTTP
 paths, so callers should not pre-encode keys.
 
