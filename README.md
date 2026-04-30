@@ -184,6 +184,24 @@ Bucket credentials:
 - `write_key`: write access.
 - Temporary token: scoped access by key prefix and permissions.
 
+Anonymous access is controlled by the absence of per-capability keys:
+
+| Configured keys | Anonymous read/list | Anonymous write | Anonymous delete |
+| --- | --- | --- | --- |
+| none | allowed | allowed | allowed |
+| only `secret_key` | allowed | allowed | `401` |
+| only `read_key` | `401` | allowed | `401` |
+| only `write_key` | allowed | `401` | `401` |
+| `secret_key` + `read_key` | `401` | allowed | `401` |
+| `secret_key` + `write_key` | allowed | `401` | `401` |
+| `read_key` + `write_key` | `401` | `401` | `401` |
+| all three | `401` | `401` | `401` |
+
+`secret_key` grants admin access, but it does not by itself restrict anonymous
+read, write, or list operations. Configure `read_key` to close read/list access
+and `write_key` to close write access. `signing_key` is only used for temporary
+tokens and does not restrict anonymous access.
+
 Secret material is never returned by policy APIs. API credentials are hashed
 before persistence.
 
@@ -215,8 +233,9 @@ Important limits:
 Values are stored with an inferred kind:
 
 - `Content-Type: application/json` stores JSON.
-- UTF-8 text stores plain text.
-- Numeric text can be used by counter operations.
+- `Content-Type: text/plain` stores UTF-8 text without numeric or JSON inference.
+- UTF-8 writes without an explicit text content type may infer numeric or JSON kinds.
+- Counter seeds should use counter operations such as `PATCH`/SDK `increment`.
 - Raw bytes are supported for binary payloads.
 
 TTL can be provided on write operations:

@@ -31,9 +31,16 @@ const DEFAULT_BUCKET_TTL_SECS: u64 = 604_800;
 /// OpenAPI deps into the domain crate.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AnonymousAccessView {
+    /// True when anonymous callers can read keys.
     pub read: bool,
+    /// True when anonymous callers can write keys.
     pub write: bool,
+    /// True when anonymous callers can list keys.
     pub enumerate: bool,
+    /// True when anonymous callers can delete keys.
+    ///
+    /// Anonymous delete is allowed only when no `secret_key`, `read_key`, or
+    /// `write_key` is configured.
     pub delete: bool,
 }
 
@@ -58,12 +65,17 @@ pub struct BucketPolicyPublic {
     /// `default_ttl` in seconds (if configured); `None` means no default expiry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_ttl: Option<u64>,
+    /// Whether an admin `secret_key` credential is configured.
     pub has_secret_key: bool,
+    /// Whether a `read_key` credential is configured. When absent, anonymous read/list is open.
     pub has_read_key: bool,
+    /// Whether a `write_key` credential is configured. When absent, anonymous write is open.
     pub has_write_key: bool,
+    /// Whether token signing material is configured. This does not affect anonymous access.
     pub has_signing_key: bool,
     /// Bumps on every signing key rotation; lets clients invalidate caches.
     pub signing_key_generation: u64,
+    /// Effective anonymous capability flags derived from configured credential presence.
     pub anonymous_access: AnonymousAccessView,
 }
 
@@ -82,11 +94,17 @@ fn public_policy_view(policy: &BucketPolicy) -> BucketPolicyPublic {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateBucketForm {
+    /// Owner/admin label for the bucket.
     pub email: String,
+    /// Optional admin credential. This does not restrict anonymous read/write/list by itself.
     pub secret_key: Option<String>,
+    /// Optional read/list credential. If absent, anonymous read/list is allowed.
     pub read_key: Option<String>,
+    /// Optional write credential. If absent, anonymous write is allowed.
     pub write_key: Option<String>,
+    /// Optional material used only for minting temporary tokens.
     pub signing_key: Option<String>,
+    /// Optional default TTL in seconds. Zero disables default expiry.
     pub default_ttl: Option<u64>,
 }
 
