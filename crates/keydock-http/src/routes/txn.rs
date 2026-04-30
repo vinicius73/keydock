@@ -98,6 +98,10 @@ pub async fn execute_txn(
     // return the canonical `400 bad_request` envelope instead of Axum's default
     // 400/422 plain-text responses.
     let req: TxnRequest = serde_json::from_slice(&body).map_err(|_| bad_request())?;
+    if req.txn.is_empty() {
+        return Err(bad_request());
+    }
+
     let mut ops: Vec<TxnOp> = Vec::with_capacity(req.txn.len());
     let mut set_count: usize = 0;
     let mut delete_count: usize = 0;

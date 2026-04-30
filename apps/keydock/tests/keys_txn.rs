@@ -8,18 +8,22 @@ use tokio::time::{Duration, sleep};
 
 use keydock_testkit::{BucketSetup, TestContext, TokenSetup, api_error_body_json};
 
+#[rstest]
+#[case::write_key("w")]
+#[case::read_key("r")]
 #[tokio::test]
-async fn txn_empty_batch_returns_204() {
+async fn txn_empty_batch_returns_400(#[case] credential: &str) {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::restricted("r", "w")).await;
 
     let res = ctx
         .server
         .post(&format!("/api/v1/{bid}"))
-        .authorization_bearer("w")
+        .authorization_bearer(credential)
         .json(&json!({ "txn": [] }))
         .await;
-    res.assert_status_no_content();
+    res.assert_status_bad_request();
+    res.assert_json(&api_error_body_json(400, "bad_request"));
 }
 
 #[tokio::test]
