@@ -36,6 +36,18 @@ export async function captureAnyError(operation: () => Promise<unknown>): Promis
   throw new Error("expected operation to fail");
 }
 
+export async function captureKeydockOutcome(operation: () => Promise<unknown>): Promise<string> {
+  try {
+    await operation();
+    return "ok";
+  } catch (error) {
+    if (error instanceof KeydockError) {
+      return `${error.name}:${error.status}`;
+    }
+    throw error;
+  }
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);

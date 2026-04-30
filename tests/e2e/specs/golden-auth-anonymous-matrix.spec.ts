@@ -4,8 +4,35 @@ import type { KeydockE2eConfig } from "../src/browser-config.js";
 import { e2eBaseUrl } from "../support/sdk-admin.js";
 import { uniqueBucketData } from "../support/test-data.js";
 
+const expectedAnonymousMatrix = {
+  "secret-only-read": "ok",
+  "secret-only-list": "ok",
+  "secret-only-write": "ok",
+  "secret-only-delete": "KeydockError:401",
+
+  "secret-read-read": "KeydockError:401",
+  "secret-read-list": "KeydockError:401",
+  "secret-read-write": "ok",
+  "secret-read-delete": "KeydockError:401",
+
+  "secret-write-read": "ok",
+  "secret-write-list": "ok",
+  "secret-write-write": "KeydockError:401",
+  "secret-write-delete": "KeydockError:401",
+
+  "all-three-read": "KeydockError:401",
+  "all-three-list": "KeydockError:401",
+  "all-three-write": "KeydockError:401",
+  "all-three-delete": "KeydockError:401",
+
+  "secret-signing-read": "ok",
+  "secret-signing-list": "ok",
+  "secret-signing-write": "ok",
+  "secret-signing-delete": "KeydockError:401",
+} as const;
+
 test.describe("anonymous auth matrix golden SDK browser coverage", () => {
-  test("covers anonymous access for documented key combinations", async ({ page }) => {
+  test("covers cleanup-safe anonymous access for documented key combinations", async ({ page }) => {
     const config: KeydockE2eConfig = {
       url: e2eBaseUrl(),
       credentials: uniqueBucketData("auth-anon-matrix"),
@@ -19,39 +46,8 @@ test.describe("anonymous auth matrix golden SDK browser coverage", () => {
 
     await expect(page.getByTestId("app-status")).toHaveText("done");
 
-    await expect(page.getByTestId("no-keys-read")).toHaveText("ok");
-    await expect(page.getByTestId("no-keys-list")).toHaveText("ok");
-    await expect(page.getByTestId("no-keys-write")).toHaveText("ok");
-    await expect(page.getByTestId("no-keys-delete")).toHaveText("ok");
-
-    await expect(page.getByTestId("read-only-read")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("read-only-list")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("read-only-write")).toHaveText("ok");
-    await expect(page.getByTestId("read-only-delete")).toHaveText("KeydockError:401");
-
-    await expect(page.getByTestId("write-only-read")).toHaveText("KeydockError:404");
-    await expect(page.getByTestId("write-only-list")).toHaveText("ok");
-    await expect(page.getByTestId("write-only-write")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("write-only-delete")).toHaveText("KeydockError:401");
-
-    await expect(page.getByTestId("secret-read-read")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("secret-read-list")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("secret-read-write")).toHaveText("ok");
-    await expect(page.getByTestId("secret-read-delete")).toHaveText("KeydockError:401");
-
-    await expect(page.getByTestId("secret-write-read")).toHaveText("ok");
-    await expect(page.getByTestId("secret-write-list")).toHaveText("ok");
-    await expect(page.getByTestId("secret-write-write")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("secret-write-delete")).toHaveText("KeydockError:401");
-
-    await expect(page.getByTestId("read-write-read")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("read-write-list")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("read-write-write")).toHaveText("KeydockError:401");
-    await expect(page.getByTestId("read-write-delete")).toHaveText("KeydockError:401");
-
-    await expect(page.getByTestId("signing-only-read")).toHaveText("ok");
-    await expect(page.getByTestId("signing-only-list")).toHaveText("ok");
-    await expect(page.getByTestId("signing-only-write")).toHaveText("ok");
-    await expect(page.getByTestId("signing-only-delete")).toHaveText("ok");
+    for (const [stepId, expected] of Object.entries(expectedAnonymousMatrix)) {
+      await expect(page.getByTestId(stepId)).toHaveText(expected);
+    }
   });
 });

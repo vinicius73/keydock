@@ -1,6 +1,7 @@
 //! Credential channel and permission matrix (HTTP integration).
 
 use axum::http::header;
+use rstest::rstest;
 
 use keydock_testkit::{BucketSetup, TestContext, api_error_body_json, basic_auth_header};
 
@@ -60,66 +61,37 @@ async fn bearer_read_key_grants_read() {
     unauthorized.assert_json(&api_error_body_json(401, "unauthorized"));
 }
 
+#[rstest]
+#[case::access_token("access_token=r")]
+#[case::key_alias("key=r")]
 #[tokio::test]
-async fn query_param_access_token_works() {
+async fn query_param_credential_works(#[case] query: &str) {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx
-        .server
-        .get(&format!("/api/v1/{bid}/k1?access_token=r"))
-        .await;
+    let response = ctx.server.get(&format!("/api/v1/{bid}/k1?{query}")).await;
     response.assert_status_not_found();
     response.assert_json(&api_error_body_json(404, "not_found"));
 }
 
+#[rstest]
+#[case::bearer_over_access_token_query("access_token=wrong", Some("r"))]
+#[case::bearer_over_key_query("key=wrong", Some("r"))]
+#[case::access_token_query_over_key_query("key=wrong&access_token=r", None)]
 #[tokio::test]
-async fn query_param_key_works() {
+async fn credential_priority_uses_first_valid_source(
+    #[case] query: &str,
+    #[case] bearer: Option<&str>,
+) {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
 
-    let response = ctx.server.get(&format!("/api/v1/{bid}/k1?key=r")).await;
-    response.assert_status_not_found();
-    response.assert_json(&api_error_body_json(404, "not_found"));
-}
+    let mut request = ctx.server.get(&format!("/api/v1/{bid}/k1?{query}"));
+    if let Some(token) = bearer {
+        request = request.authorization_bearer(token);
+    }
 
-#[tokio::test]
-async fn bearer_header_wins_over_access_token_query() {
-    let ctx = TestContext::new();
-    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
-
-    let response = ctx
-        .server
-        .get(&format!("/api/v1/{bid}/k1?access_token=wrong"))
-        .authorization_bearer("r")
-        .await;
-    response.assert_status_not_found();
-    response.assert_json(&api_error_body_json(404, "not_found"));
-}
-
-#[tokio::test]
-async fn bearer_header_wins_over_key_query() {
-    let ctx = TestContext::new();
-    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
-
-    let response = ctx
-        .server
-        .get(&format!("/api/v1/{bid}/k1?key=wrong"))
-        .authorization_bearer("r")
-        .await;
-    response.assert_status_not_found();
-    response.assert_json(&api_error_body_json(404, "not_found"));
-}
-
-#[tokio::test]
-async fn access_token_query_wins_over_key_query() {
-    let ctx = TestContext::new();
-    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
-
-    let response = ctx
-        .server
-        .get(&format!("/api/v1/{bid}/k1?key=wrong&access_token=r"))
-        .await;
+    let response = request.await;
     response.assert_status_not_found();
     response.assert_json(&api_error_body_json(404, "not_found"));
 }

@@ -36,8 +36,10 @@ Use `keydock_testkit::BucketSetup` with `Default` + named constructors for commo
 - `BucketSetup::public()` — no static credentials
 - `BucketSetup::admin(secret)` — admin via `secret_key`
 - `BucketSetup::read_only(read)` — read static key
+- `BucketSetup::write_only(write)` — write static key
 - `BucketSetup::restricted(read, write)` — read + write
 - `BucketSetup::signed(secret, signing)` — secret + signing key (token flows)
+- `BucketSetup::signing_only(signing)` — signing key without direct static credentials
 
 For one-off cases, use struct update syntax: `BucketSetup { email: "x@example.com".into(), ..BucketSetup::signed("sec", "sign") }`.
 
