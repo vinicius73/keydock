@@ -42,6 +42,9 @@ fn parse_permissions(raw: &str) -> Result<keydock_domain::Permission, Response> 
             _ => return Err(bad_request()),
         }
     }
+    if p == keydock_domain::Permission::NONE {
+        return Err(bad_request());
+    }
     Ok(p)
 }
 

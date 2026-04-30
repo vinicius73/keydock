@@ -1,6 +1,7 @@
 //! Temporary token lifecycle and scope (HTTP integration).
 
 use pretty_assertions::assert_eq;
+use rstest::rstest;
 use serde_json::{Value, json};
 
 use keydock_testkit::{BucketSetup, PolicyPatch, TestContext, TokenSetup, api_error_body_json};
@@ -122,6 +123,25 @@ async fn token_mint_rejects_empty_prefix() {
     let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
 
     let form = TokenSetup::read("", 3600);
+    let response = ctx.create_token(&bid, "sec", &form).await;
+    response.assert_status_bad_request();
+    response.assert_json(&api_error_body_json(400, "bad_request"));
+}
+
+#[rstest]
+#[case::empty("")]
+#[case::whitespace("  ")]
+#[case::commas(",,")]
+#[tokio::test]
+async fn token_mint_rejects_empty_permissions(#[case] permissions: &str) {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::signed("sec", "sign")).await;
+
+    let form = TokenSetup {
+        prefix: "scope:".into(),
+        permissions: permissions.into(),
+        ttl: 3600,
+    };
     let response = ctx.create_token(&bid, "sec", &form).await;
     response.assert_status_bad_request();
     response.assert_json(&api_error_body_json(400, "bad_request"));
