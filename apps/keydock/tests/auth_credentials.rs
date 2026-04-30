@@ -1,6 +1,7 @@
 //! Credential channel and permission matrix (HTTP integration).
 
 use axum::http::header;
+
 use keydock_testkit::{BucketSetup, TestContext, api_error_body_json, basic_auth_header};
 
 #[tokio::test]
@@ -83,6 +84,47 @@ async fn query_param_key_works() {
 }
 
 #[tokio::test]
+async fn bearer_header_wins_over_access_token_query() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
+
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1?access_token=wrong"))
+        .authorization_bearer("r")
+        .await;
+    response.assert_status_not_found();
+    response.assert_json(&api_error_body_json(404, "not_found"));
+}
+
+#[tokio::test]
+async fn bearer_header_wins_over_key_query() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
+
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1?key=wrong"))
+        .authorization_bearer("r")
+        .await;
+    response.assert_status_not_found();
+    response.assert_json(&api_error_body_json(404, "not_found"));
+}
+
+#[tokio::test]
+async fn access_token_query_wins_over_key_query() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
+
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1?key=wrong&access_token=r"))
+        .await;
+    response.assert_status_not_found();
+    response.assert_json(&api_error_body_json(404, "not_found"));
+}
+
+#[tokio::test]
 async fn basic_auth_works() {
     let ctx = TestContext::new();
     let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
@@ -91,6 +133,48 @@ async fn basic_auth_works() {
         .server
         .get(&format!("/api/v1/{bid}/k1"))
         .authorization(basic_auth_header("r"))
+        .await;
+    response.assert_status_not_found();
+    response.assert_json(&api_error_body_json(404, "not_found"));
+}
+
+#[tokio::test]
+async fn basic_auth_wrong_password_still_authenticates() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
+
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1"))
+        .authorization("Basic cjp3cm9uZ3Bhc3N3b3Jk")
+        .await;
+    response.assert_status_not_found();
+    response.assert_json(&api_error_body_json(404, "not_found"));
+}
+
+#[tokio::test]
+async fn basic_auth_no_colon_uses_full_string() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
+
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1"))
+        .authorization("Basic cg==")
+        .await;
+    response.assert_status_not_found();
+    response.assert_json(&api_error_body_json(404, "not_found"));
+}
+
+#[tokio::test]
+async fn basic_auth_invalid_base64_falls_through_to_query() {
+    let ctx = TestContext::new();
+    let bid = ctx.create_bucket(BucketSetup::read_only("r")).await;
+
+    let response = ctx
+        .server
+        .get(&format!("/api/v1/{bid}/k1?access_token=r"))
+        .authorization("Basic !!!invalid!!!")
         .await;
     response.assert_status_not_found();
     response.assert_json(&api_error_body_json(404, "not_found"));

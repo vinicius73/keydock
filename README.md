@@ -162,7 +162,8 @@ Authorization: Bearer <credential>
 Authorization: Basic <base64(username:password)>
 ```
 
-For Basic auth, the username is used as the credential.
+For Basic auth, the username is used as the credential. The `Bearer` and
+`Basic` scheme names are case-sensitive.
 
 Query parameters are also supported:
 
@@ -176,6 +177,10 @@ Credential priority:
 1. `Authorization` header.
 2. `access_token` query parameter.
 3. `key` query parameter.
+
+If an `Authorization` header is present but cannot be parsed as a non-empty
+Bearer credential or a valid Basic username, query parameters are used as a
+fallback.
 
 Bucket credentials:
 
@@ -200,7 +205,9 @@ Anonymous access is controlled by the absence of per-capability keys:
 `secret_key` grants admin access, but it does not by itself restrict anonymous
 read, write, or list operations. Configure `read_key` to close read/list access
 and `write_key` to close write access. `signing_key` is only used for temporary
-tokens and does not restrict anonymous access.
+tokens and does not restrict anonymous access. A bucket configured with only a
+`signing_key` behaves like a bucket with no configured keys for anonymous
+read/list, write, and delete operations.
 
 Secret material is never returned by policy APIs. API credentials are hashed
 before persistence.

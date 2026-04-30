@@ -375,10 +375,11 @@ impl FromRequestParts<AppState> for BucketAuth {
 mod tests {
     use axum::http::StatusCode;
     use bytes::Bytes;
+    use pretty_assertions::assert_eq;
+
     use keydock_domain::BucketId;
 
     use super::*;
-    use pretty_assertions::assert_eq;
 
     fn sample_key(name: &[u8]) -> Key {
         Key::from_bytes(Bytes::copy_from_slice(name)).expect("key")
@@ -494,5 +495,92 @@ mod tests {
         );
         let err = a.require_read_on(&sample_key(b"k")).unwrap_err();
         assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn require_enumerate_anonymous_no_read_key_ok() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: false,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        assert_eq!(a.require_enumerate().is_ok(), true);
+    }
+
+    #[test]
+    fn require_enumerate_anonymous_has_read_key_unauthorized() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        let err = a.require_enumerate().unwrap_err();
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn require_write_anonymous_has_write_key_unauthorized() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: false,
+                has_write_key: true,
+                has_secret_key: false,
+            },
+            Permission::NONE,
+        );
+        let err = a.require_write_on(&sample_key(b"k")).unwrap_err();
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn require_write_anonymous_public_ok() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: false,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::anonymous_from_keys(false, false, false),
+        );
+        assert_eq!(a.require_write_on(&sample_key(b"k")).is_ok(), true);
+    }
+
+    #[test]
+    fn require_delete_anonymous_any_key_present_unauthorized() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: true,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::anonymous_from_keys(false, true, false),
+        );
+        let err = a.require_delete_on(&sample_key(b"k")).unwrap_err();
+        assert_eq!(err.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[test]
+    fn require_delete_anonymous_no_keys_ok() {
+        let a = auth(
+            ResolvedIdentity::Anonymous,
+            PolicyKeysPresence {
+                has_read_key: false,
+                has_write_key: false,
+                has_secret_key: false,
+            },
+            Permission::anonymous_from_keys(false, false, false),
+        );
+        assert_eq!(a.require_delete_on(&sample_key(b"k")).is_ok(), true);
     }
 }

@@ -63,34 +63,29 @@ impl Permission {
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+    use rstest::rstest;
 
     use super::*;
 
     #[test]
     fn admin_has_all_flags() {
-        let p = Permission::ADMIN;
-        assert!(p.read);
-        assert!(p.write);
-        assert!(p.enumerate);
-        assert!(p.delete);
+        assert_eq!(Permission::ADMIN, Permission::new(true, true, true, true));
     }
 
     #[test]
     fn read_only_has_only_read() {
-        let p = Permission::READ_ONLY;
-        assert!(p.read);
-        assert!(!p.write);
-        assert!(!p.enumerate);
-        assert!(!p.delete);
+        assert_eq!(
+            Permission::READ_ONLY,
+            Permission::new(true, false, false, false)
+        );
     }
 
     #[test]
     fn none_has_no_flags() {
-        let p = Permission::NONE;
-        assert!(!p.read);
-        assert!(!p.write);
-        assert!(!p.enumerate);
-        assert!(!p.delete);
+        assert_eq!(
+            Permission::NONE,
+            Permission::new(false, false, false, false)
+        );
     }
 
     #[test]
@@ -98,5 +93,26 @@ mod tests {
         let a = Permission::new(true, false, false, false);
         let b = Permission::new(false, true, false, true);
         assert_eq!(a.union(b), Permission::new(true, true, false, true));
+    }
+
+    #[rstest]
+    #[case::no_keys(false, false, false, Permission::new(true, true, true, true))]
+    #[case::secret_only(true, false, false, Permission::new(true, true, true, false))]
+    #[case::read_only(false, true, false, Permission::new(false, true, false, false))]
+    #[case::write_only(false, false, true, Permission::new(true, false, true, false))]
+    #[case::secret_and_read(true, true, false, Permission::new(false, true, false, false))]
+    #[case::secret_and_write(true, false, true, Permission::new(true, false, true, false))]
+    #[case::read_and_write(false, true, true, Permission::new(false, false, false, false))]
+    #[case::all_three(true, true, true, Permission::new(false, false, false, false))]
+    fn anonymous_from_keys_matrix(
+        #[case] has_secret: bool,
+        #[case] has_read: bool,
+        #[case] has_write: bool,
+        #[case] expected: Permission,
+    ) {
+        assert_eq!(
+            Permission::anonymous_from_keys(has_secret, has_read, has_write),
+            expected
+        );
     }
 }

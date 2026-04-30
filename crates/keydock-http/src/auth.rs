@@ -132,6 +132,29 @@ mod tests {
         assert_eq!(c.as_str(), "alice");
     }
 
+    #[test]
+    fn basic_auth_password_ignored() {
+        let encoded = BASE64_STD.encode(b"alice:wrong-password");
+        let h = headers_with_auth(&format!("Basic {encoded}"));
+        let c = extract(&h, None).expect("credential");
+        assert_eq!(c.as_str(), "alice");
+    }
+
+    #[test]
+    fn basic_auth_no_colon_uses_full_string() {
+        let encoded = BASE64_STD.encode(b"alice");
+        let h = headers_with_auth(&format!("Basic {encoded}"));
+        let c = extract(&h, None).expect("credential");
+        assert_eq!(c.as_str(), "alice");
+    }
+
+    #[test]
+    fn basic_auth_invalid_base64_falls_through_to_query() {
+        let h = headers_with_auth("Basic !!!invalid!!!");
+        let c = extract(&h, Some("access_token=query-token")).expect("credential");
+        assert_eq!(c.as_str(), "query-token");
+    }
+
     #[rstest]
     #[case::access_token("access_token=qp-token", "qp-token")]
     #[case::key_alias("key=key-alias", "key-alias")]

@@ -55,6 +55,14 @@ impl BucketSetup {
         }
     }
 
+    /// Write-only static key.
+    pub fn write_only(write: impl Into<String>) -> Self {
+        Self {
+            write_key: Some(write.into()),
+            ..Self::default()
+        }
+    }
+
     /// Read + write static keys.
     pub fn restricted(read: impl Into<String>, write: impl Into<String>) -> Self {
         Self {
@@ -68,6 +76,14 @@ impl BucketSetup {
     pub fn signed(secret: impl Into<String>, signing: impl Into<String>) -> Self {
         Self {
             secret_key: Some(secret.into()),
+            signing_key: Some(signing.into()),
+            ..Self::default()
+        }
+    }
+
+    /// Signing key only; anonymous data-plane access stays public.
+    pub fn signing_only(signing: impl Into<String>) -> Self {
+        Self {
             signing_key: Some(signing.into()),
             ..Self::default()
         }
