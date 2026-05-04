@@ -18,7 +18,8 @@ pub use tokens::{PolicyPatch, TokenSetup};
 
 use keydock_domain::{BucketId, Key, SigningKey};
 use keydock_fjall::FjallStore;
-use keydock_http::{RouterOptions, build_router};
+pub use keydock_http::{RateLimitSettings, RouterOptions};
+use keydock_http::{build_router, init_rate_limiter};
 use keydock_state::AppState;
 use keydock_support::clock::SystemClock;
 
@@ -68,7 +69,7 @@ impl TestContext {
     /// Panics if setup fails. The panic location points at the caller (test).
     #[track_caller]
     pub fn new() -> Self {
-        match build_test_app() {
+        match build_test_app(RouterOptions::default()) {
             Ok((dir, store, server)) => Self {
                 _dir: dir,
                 store,
@@ -76,6 +77,39 @@ impl TestContext {
             },
             Err(e) => panic!("failed to construct test app: {e}"),
         }
+    }
+
+    /// Like [`Self::new`], but uses custom router wiring (e.g. rate limiting).
+    ///
+    /// When `opts.rate_limit.enabled` is true, initializes the process-global limiter
+    /// before building the router; tests that enable this **must** run serially
+    /// (see integration tests using [`serial_test::serial`]).
+    #[instrument(
+        skip_all,
+        fields(
+            expose_metrics = opts.expose_metrics,
+            rate_limit_enabled = opts.rate_limit.enabled,
+            rate_limit_requests_per_hour = opts.rate_limit.requests_per_hour
+        )
+    )]
+    pub async fn with_router_options(opts: RouterOptions) -> Self {
+        if opts.rate_limit.enabled {
+            init_rate_limiter(&opts.rate_limit).await;
+        }
+        match build_test_app(opts) {
+            Ok((dir, store, server)) => Self {
+                _dir: dir,
+                store,
+                server,
+            },
+            Err(e) => panic!("failed to construct test app: {e}"),
+        }
+    }
+
+    /// Simulates storage metadata failure for [`GET /ready`](crate) readiness checks.
+    #[instrument(skip_all, fields(fail_ping_metadata = fail))]
+    pub fn testkit_set_fail_ping_metadata(&self, fail: bool) {
+        self.store.testkit_set_fail_ping_metadata(fail);
     }
 
     /// Creates a bucket via `POST /api/v1` and returns the bucket id (body text).
@@ -128,8 +162,9 @@ pub fn api_error_body_json(code: u16, message: &str) -> serde_json::Value {
 }
 
 #[instrument(skip_all)]
-fn build_test_app()
--> Result<(tempfile::TempDir, Arc<FjallStore>, axum_test::TestServer), TestKitError> {
+fn build_test_app(
+    router_options: RouterOptions,
+) -> Result<(tempfile::TempDir, Arc<FjallStore>, axum_test::TestServer), TestKitError> {
     let dir = tempfile::tempdir()?;
     let store = Arc::new(FjallStore::open(dir.path())?);
     let buckets: Arc<dyn keydock_usecase::BucketRepository> = store.clone();
@@ -143,7 +178,7 @@ fn build_test_app()
 
     let prometheus = prometheus_handle()?;
 
-    let router = build_router(state, prometheus.clone(), RouterOptions::default());
+    let router = build_router(state, prometheus.clone(), router_options);
     let server = axum_test::TestServer::new(router);
 
     Ok((dir, store, server))

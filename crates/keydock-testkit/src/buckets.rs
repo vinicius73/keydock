@@ -95,6 +95,9 @@ pub async fn create_bucket(server: &TestServer, setup: &BucketSetup) -> String {
     let body = serde_urlencoded::to_string(setup).expect("encode bucket form");
     let response = server
         .post("/api/v1")
+        // `axum-test` omits `ConnectInfo`; `RealIpLayer` needs an explicit forwarded
+        // IP (or socket fallback) so `GovernorLayer` can key the limiter per client.
+        .add_header("x-real-ip", "203.0.113.1")
         .bytes(Bytes::from(body))
         .content_type("application/x-www-form-urlencoded")
         .await;

@@ -29,6 +29,7 @@ axum = { version = "0.8.9", features = [
 ] }
 bytes = "1.11.1"
 fjall = "3.1.4"
+futures-util = { version = "0.3.31", default-features = false, features = ["async-await", "alloc"] }
 hmac = { version = "0.13.0", features = ["zeroize"] }
 lexopt = "0.3.2"
 metrics = "0.24.3"
@@ -92,3 +93,4 @@ keydock-usecase = { path = "crates/keydock-usecase" }
 pretty_assertions = "1.4.1"
 axum-test = { version = "20.0.0", features = ["pretty-assertions"] }
 rstest = "0.26.1"
+serial_test = "3.2.0"

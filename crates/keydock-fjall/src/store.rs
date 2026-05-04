@@ -1,5 +1,7 @@
 use std::path::Path;
 use std::sync::Arc;
+#[cfg(feature = "testkit")]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use fjall::{Database, Keyspace, KeyspaceCreateOptions};
@@ -37,6 +39,9 @@ pub struct FjallStore {
     expiry: Arc<Keyspace>,
     /// Serializes conflicting writes for the same storage key.
     write_locks: Arc<StripedLocks>,
+    /// When set, [`BucketRepository::ping_metadata`] fails without touching disk.
+    #[cfg(feature = "testkit")]
+    fail_ping_metadata: Arc<AtomicBool>,
 }
 
 impl FjallStore {
@@ -52,7 +57,20 @@ impl FjallStore {
             data,
             expiry,
             write_locks: Arc::new(StripedLocks::new()),
+            #[cfg(feature = "testkit")]
+            fail_ping_metadata: Arc::new(AtomicBool::new(false)),
         })
+    }
+
+    /// Forces [`BucketRepository::ping_metadata`] to fail (for readiness integration tests).
+    #[cfg(feature = "testkit")]
+    #[instrument(
+        skip_all,
+        name = "FjallStore::testkit_set_fail_ping_metadata",
+        fields(fail_ping_metadata = fail)
+    )]
+    pub fn testkit_set_fail_ping_metadata(&self, fail: bool) {
+        self.fail_ping_metadata.store(fail, Ordering::SeqCst);
     }
 
     #[instrument(skip_all, name = "FjallStore::build_gc_sweeper")]
@@ -92,6 +110,13 @@ impl FjallStore {
 impl BucketRepository for FjallStore {
     #[instrument(skip_all, name = "FjallStore::ping_metadata")]
     fn ping_metadata(&self) -> Result<(), UseCaseError> {
+        #[cfg(feature = "testkit")]
+        if self.fail_ping_metadata.load(Ordering::SeqCst) {
+            let result: Result<(), UseCaseError> =
+                Err(UseCaseError::Storage("testkit ping failure".into()));
+            record_storage_op("ping_metadata", &result);
+            return result;
+        }
         let result = (|| -> Result<(), UseCaseError> {
             self.meta.get(b"__ping__").map_err(FjallError::from)?;
             Ok(())

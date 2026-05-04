@@ -28,10 +28,12 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 tempfile = { workspace = true }
 bytes = { workspace = true }
+futures-util = { workspace = true }
 keydock-testkit = { workspace = true }
 pretty_assertions = { workspace = true }
 rstest = { workspace = true }
 serde_json = { workspace = true }
+serial_test = { workspace = true }
 serde_urlencoded = { workspace = true }
 tokio = { workspace = true }
 uuid = { workspace = true }

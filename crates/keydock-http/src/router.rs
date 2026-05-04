@@ -138,6 +138,8 @@ pub fn build_router(state: AppState, prometheus: PrometheusHandle, opts: RouterO
     let ops_routes = ops_routes.method_not_allowed_fallback(method_not_allowed_fallback);
 
     if opts.rate_limit.enabled {
+        // Tower executes the first registered layer first; `RealIp` must run before
+        // `GovernorLayer` so the client IP extension exists (see axum-governor).
         let rate_limit_layer = ServiceBuilder::new()
             .layer(RealIpLayer::default())
             .layer(GovernorLayer::default());
