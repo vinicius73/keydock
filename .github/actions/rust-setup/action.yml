@@ -1,0 +1,40 @@
+name: Rust Setup
+description: >
+  Parse rust-toolchain.toml, install the pinned toolchain, and restore the
+  Cargo dependency cache. All consumers share the same cache key.
+
+inputs:
+  components:
+    description: Comma-separated extra rustup components (e.g. "rustfmt, clippy").
+    required: false
+    default: ""
+  cache-on-failure:
+    description: Save the Cargo cache even when the calling job fails.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Parse rust-toolchain.toml
+      id: toolchain
+      shell: bash
+      run: |
+        channel=$(grep -E '^channel\s*=' rust-toolchain.toml | head -n1 | sed -E 's/^channel\s*=\s*"([^"]+)".*/\1/')
+        if [ -z "$channel" ]; then
+          echo "failed to parse channel from rust-toolchain.toml" >&2
+          exit 1
+        fi
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+
+    # @master required when toolchain is passed as explicit input (not inferred from @rev).
+    # No versioned releases exist; pinned to a commit SHA for immutability.
+    - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master (2026-04-29)
+      with:
+        toolchain: ${{ steps.toolchain.outputs.channel }}
+        components: ${{ inputs.components }}
+
+    - uses: Swatinem/rust-cache@v2.9.1
+      with:
+        shared-key: rust-${{ runner.os }}
+        cache-on-failure: ${{ inputs.cache-on-failure }}

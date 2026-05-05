@@ -1,0 +1,54 @@
+name: CI (SDK)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - packages/keydock-sdk/**
+  pull_request:
+    branches: [main]
+    paths:
+      - packages/keydock-sdk/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/keydock-sdk
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v4.3.0
+        with:
+          path: ~/.bun/install/cache
+          key: bun-sdk-${{ runner.os }}-${{ hashFiles('packages/keydock-sdk/bun.lock') }}
+          restore-keys: bun-sdk-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Format check
+        run: bun run fmt:check
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test
