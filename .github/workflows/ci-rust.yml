@@ -2,7 +2,7 @@ name: CI (Rust)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - Cargo.toml
       - Cargo.lock
@@ -10,7 +10,7 @@ on:
       - crates/**
       - apps/**
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - Cargo.toml
       - Cargo.lock
@@ -20,7 +20,7 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: read

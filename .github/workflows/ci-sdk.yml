@@ -2,17 +2,17 @@ name: CI (SDK)
 
 on:
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - packages/keydock-sdk/**
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - packages/keydock-sdk/**
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: read
