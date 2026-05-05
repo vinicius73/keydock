@@ -1,6 +1,7 @@
 name: CI (SDK)
 
 on:
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
