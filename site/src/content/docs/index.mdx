@@ -1,0 +1,32 @@
+---
+title: Keydock
+description: Multi-tenant HTTP key-value service with buckets, TTL, tokens, counters, and transactions.
+template: splash
+hero:
+  tagline: Multi-tenant HTTP key-value service. Buckets, keys, TTL, scoped tokens, counters, and atomic transactions — all over a simple HTTP API.
+  actions:
+    - text: Quick Start
+      link: /guides/quickstart/
+      icon: right-arrow
+    - text: GitHub
+      link: https://github.com/vinicius73/keydock
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid stagger>
+  <Card title="Buckets" icon="document">
+    Isolated namespaces with independent credentials. Each bucket has its own `secret_key`, `read_key`, `write_key`, and optional `signing_key`.
+  </Card>
+  <Card title="Keys and TTL" icon="add-document">
+    Store plain text, JSON, numeric, or raw byte values. Set per-write or per-bucket default TTL. Keys expire automatically.
+  </Card>
+  <Card title="TypeScript SDK" icon="puzzle">
+    Official `keydock-sdk` package for Node.js, Bun, Deno, and browsers. ESM-only, Fetch-based, TypeScript-first.
+  </Card>
+  <Card title="OpenAPI and Swagger UI" icon="open-book">
+    Each running Keydock exposes `/api-docs/openapi.json` (spec) and `/swagger-ui/` (explorer) on the same origin as the API.
+  </Card>
+</CardGrid>

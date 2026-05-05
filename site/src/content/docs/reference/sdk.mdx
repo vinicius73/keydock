@@ -1,0 +1,382 @@
+---
+title: TypeScript SDK
+description: Official keydock-sdk for Node.js, Bun, Deno, and browsers — installation, API surface, error handling, and security notes.
+---
+
+import { Aside, Tabs, TabItem } from '@astrojs/starlight/components';
+
+`keydock-sdk` is the official TypeScript client for Keydock. It is ESM-only, Fetch-based, and works in Node.js, Bun, Deno, browsers, and edge runtimes.
+
+- npm: [`keydock-sdk`](https://www.npmjs.com/package/keydock-sdk)
+- JSR: [`@keydock/sdk`](https://jsr.io/@keydock/sdk)
+- Source: [GitHub](https://github.com/vinicius73/keydock/tree/main/packages/keydock-sdk)
+
+---
+
+## Install
+
+`ky` is a required peer dependency. Install both packages together:
+
+<Tabs>
+  <TabItem label="Bun">
+    ```bash
+    bun add keydock-sdk ky
+    ```
+  </TabItem>
+  <TabItem label="npm">
+    ```bash
+    npm install keydock-sdk ky
+    ```
+  </TabItem>
+  <TabItem label="pnpm">
+    ```bash
+    pnpm add keydock-sdk ky
+    ```
+  </TabItem>
+  <TabItem label="Deno / JSR">
+    ```ts
+    import { createKeydock } from "jsr:@keydock/sdk";
+    ```
+  </TabItem>
+</Tabs>
+
+<Aside type="note">
+The npm package name is `keydock-sdk`; JSR publishes the same source as [`@keydock/sdk`](https://jsr.io/@keydock/sdk). Version numbers are kept in sync in this repository — confirm the semver on each registry before locking dependencies in production.
+</Aside>
+
+## Runtime Support
+
+| Runtime | Minimum version |
+|---|---|
+| Node.js | 22 |
+| Bun | latest stable |
+| Deno | 2 |
+| Browsers | latest stable Chrome, Firefox, Safari, Edge |
+| Edge runtimes | any runtime with native Fetch API |
+
+---
+
+## Creating a Client
+
+```ts
+import { createKeydock } from "keydock-sdk";
+
+const keydock = createKeydock({
+  baseUrl: "https://keydock.example.com",
+  auth: process.env.KEYDOCK_SECRET_KEY,
+});
+```
+
+`createKeydock` accepts a `KeydockOptions` object:
+
+| Option | Type | Description |
+|---|---|---|
+| `baseUrl` | `string \| URL` | Required. Service URL. The SDK appends `/api/v1` internally. |
+| `auth` | `string \| () => string \| Promise<string>` | Optional. Static credential or a function evaluated before each request. |
+| `http` | `KyInstance` | Optional. Custom Ky instance for advanced transport configuration. |
+| `request` | `KyOptions` | Optional. Default Ky request options applied to all operations. |
+
+### Dynamic auth (token rotation)
+
+Pass a function when credentials are short-lived:
+
+```ts
+const keydock = createKeydock({
+  baseUrl: "https://keydock.example.com",
+  auth: async () => getAccessToken(),
+});
+```
+
+### Custom Ky instance
+
+For application-specific hooks, tracing, or custom `fetch`:
+
+```ts
+import ky from "ky";
+import { createKeydock } from "keydock-sdk";
+
+const http = ky.create({
+  timeout: 5000,
+  hooks: {
+    beforeRequest: [
+      ({ request }) => {
+        request.headers.set("x-request-id", crypto.randomUUID());
+      },
+    ],
+  },
+});
+
+const keydock = createKeydock({
+  baseUrl: "https://keydock.example.com",
+  auth: () => getToken(),
+  http,
+});
+```
+
+---
+
+## Bucket Handle
+
+Get a handle for a specific bucket:
+
+```ts
+const bucket = keydock.bucket("bucket-id");
+```
+
+All key operations are called on `BucketHandle`.
+
+---
+
+## Key Operations
+
+### Read
+
+```ts
+const text = await bucket.getText("message");
+const user = await bucket.getJson<{ name: string }>("users/42");
+const bytes = await bucket.getBytes("avatar");
+```
+
+`get*` methods throw `KeydockError` on `404`. Use the `OrNull` variants when a missing key is expected:
+
+```ts
+const maybeUser = await bucket.getJsonOrNull<{ name: string }>("users/missing");
+// Returns undefined when the key is missing. Returns null for a stored JSON null.
+
+const maybeText = await bucket.getTextOrNull("message");
+const maybeBytes = await bucket.getBytesOrNull("avatar");
+```
+
+To validate the shape at runtime, pass a `parse` function:
+
+```ts
+import { z } from "zod";
+
+const UserSchema = z.object({ name: z.string() });
+
+const user = await bucket.getJson("users/42", {
+  parse: UserSchema.parse,
+});
+```
+
+### Write
+
+```ts
+await bucket.setText("message", "hello");
+await bucket.setJson("users/42", { name: "Ana" });
+await bucket.setBytes("avatar", new Uint8Array([1, 2, 3]));
+```
+
+With TTL:
+
+```ts
+await bucket.setText("session/123", "active", { ttlSeconds: 900 });
+await bucket.setJson("users/42", user, { ttlSeconds: 3600 });
+```
+
+`ttlSeconds` must be a finite non-negative integer. It overrides the bucket default TTL when present.
+
+### Exists and Delete
+
+```ts
+const exists = await bucket.exists("message"); // true or false
+
+await bucket.delete("message"); // resolves with void on 204
+```
+
+### List Keys
+
+```ts
+const keys = await bucket.listKeys({ prefix: "users/" });
+// string[]
+
+const entries = await bucket.listEntries({ prefix: "users/" });
+// { key: string; value: unknown }[]
+```
+
+Options: `prefix`, `limit`, `skip`, `reverse`.
+
+---
+
+## Counter
+
+```ts
+const result = await bucket.increment("page-views", +1);
+// result.kind === "integer" | "float"
+```
+
+`increment` accepts `number | bigint` as the delta and returns a `CounterValue` — never a bare number:
+
+```ts
+type CounterValue =
+  | { raw: string; kind: "integer"; bigint: bigint; number?: number }
+  | { raw: string; kind: "float"; number: number };
+```
+
+- Integer results always have `bigint`. `number` is present only when the value fits in JavaScript's safe integer range.
+- `raw` is the original server string and is always safe to display.
+
+```ts
+const views = await bucket.increment("page-views", 1n); // bigint delta
+
+if (views.kind === "integer") {
+  console.log(views.bigint.toString());
+} else {
+  console.log(views.number);
+}
+```
+
+<Aside type="caution">
+`increment` is not retried by default. A network failure mid-request is ambiguous — the counter may have been incremented on the server.
+</Aside>
+
+---
+
+## Transactions
+
+Atomic set and delete operations:
+
+```ts
+await bucket.transaction([
+  { set: "users/42/name", value: "Ana", ttlSeconds: 3600 },
+  { delete: "users/42/tmp" },
+]);
+```
+
+Transaction operations:
+
+- `{ set: string; value: NonNullJsonValue; ttlSeconds?: number }` — `null` values are rejected locally
+- `{ delete: string }`
+
+All operations commit together or none do.
+
+---
+
+## Bucket Administration
+
+```ts
+const created = await keydock.buckets.create({
+  email: "admin@example.com",
+  secretKey: "admin-secret",
+  readKey: "read-only",
+  writeKey: "write-only",
+  signingKey: "signing-secret",
+  defaultTtlSeconds: 604800,
+});
+// { id: string }
+
+const policy = await keydock.buckets.getPolicy(created.id);
+// BucketPolicy — camelCase; never includes secret material
+
+await keydock.buckets.updatePolicy(created.id, {
+  readKey: "new-read-key",
+  writeKey: null,       // clears the write key
+  defaultTtlSeconds: 0, // no default expiry
+});
+
+const exists = await keydock.buckets.exists(created.id); // true or false
+
+await keydock.buckets.delete(created.id);
+```
+
+All policy field names use camelCase in TypeScript. The SDK converts them to the server's `snake_case` wire format internally.
+
+---
+
+## Tokens
+
+```ts
+const token = await bucket.tokens.create({
+  prefix: "user:42:",
+  permissions: ["read", "write", "enumerate"],
+  ttlSeconds: 900,
+});
+// { accessToken: string }
+```
+
+Valid permissions: `"read"`, `"write"`, `"enumerate"`, `"delete"`.
+
+Use the token as auth in a separate scoped client:
+
+```ts
+const scopedClient = createKeydock({
+  baseUrl: "https://keydock.example.com",
+  auth: token.accessToken,
+});
+```
+
+---
+
+## Error Handling
+
+| Class | When thrown |
+|---|---|
+| `KeydockError` | HTTP error response from the server |
+| `KeydockTimeoutError` | Request exceeded the timeout |
+| `KeydockNetworkError` | Network-level failure |
+| `KeydockValidationError` | Invalid local input (empty key, zero delta, null transaction value, etc.) |
+
+```ts
+import { KeydockError, createKeydock } from "keydock-sdk";
+
+try {
+  await bucket.getJson("missing");
+} catch (error) {
+  if (error instanceof KeydockError && error.status === 404) {
+    // Key does not exist
+  } else {
+    throw error;
+  }
+}
+```
+
+`KeydockError` properties: `status` (HTTP status), `code` (server error code), `detail` (server message), `response`, `request`, `cause`.
+
+---
+
+## Retry Behaviour
+
+The SDK uses conservative defaults:
+
+- `GET` and `HEAD` operations may retry transient failures (408, 429, 5xx).
+- All write operations (`PUT`, `POST`, `PATCH`, `DELETE`) do not retry by default.
+
+Override per operation:
+
+```ts
+await bucket.setJson("config", value, {
+  request: { retry: { limit: 0 } },
+});
+```
+
+---
+
+## Browser Security
+
+<Aside type="danger">
+Never ship bucket `secretKey`, root keys, long-lived admin credentials, or signing keys to browser code. The SDK cannot make credentials safe — it can only make safe patterns easy.
+</Aside>
+
+Browser-safe credential patterns:
+
+- Anonymous access for public buckets
+- Read-only keys scoped to public data
+- Short-lived scoped tokens minted by your backend
+
+Recommended browser flow:
+
+```ts
+const keydock = createKeydock({
+  baseUrl: "https://keydock.example.com",
+  auth: async () => {
+    const response = await fetch("/api/keydock-token");
+    if (!response.ok) throw new Error("Failed to get token");
+    return response.text();
+  },
+});
+
+const bucket = keydock.bucket("bucket-id");
+const profile = await bucket.getJson<Profile>("public/profile.json");
+```
+
+Your backend mints the token using the bucket `secretKey` and `signingKey` — those credentials never reach the browser.
