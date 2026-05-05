@@ -38,25 +38,17 @@ jobs:
       - name: cargo build (release)
         run: cargo build -p keydock --release --locked
 
-      - uses: oven-sh/setup-bun@v2.2.0
+      - uses: ./.github/actions/bun-setup
         with:
-          bun-version: latest
+          working-directory: packages/keydock-sdk
 
-      - uses: actions/cache@v5.0.5
-        with:
-          path: ~/.bun/install/cache
-          key: bun-e2e-${{ runner.os }}-${{ hashFiles('packages/keydock-sdk/bun.lock', 'tests/e2e/bun.lock') }}
-          restore-keys: bun-e2e-${{ runner.os }}-
-
-      - name: Install and build SDK
+      - name: Build SDK
         working-directory: packages/keydock-sdk
-        run: |
-          bun install --frozen-lockfile
-          bun run build
+        run: bun run build
 
-      - name: Install e2e dependencies
-        working-directory: tests/e2e
-        run: bun install --frozen-lockfile
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: tests/e2e
 
       - name: Install Playwright Chromium
         working-directory: tests/e2e

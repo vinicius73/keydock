@@ -1,0 +1,122 @@
+name: Release (prepare)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (semver, e.g. 0.3.0 or 1.0.0-rc.1)'
+        required: true
+        type: string
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  VERSION: ${{ inputs.version }}
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Validate semver
+        shell: bash
+        run: |
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Invalid semver: ${VERSION} (expected MAJOR.MINOR.PATCH with optional pre-release suffix)" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Ensure release tag does not exist on remote
+        shell: bash
+        run: |
+          if git ls-remote --tags origin "refs/tags/v${VERSION}" | grep -q .; then
+            echo "Tag v${VERSION} already exists on origin" >&2
+            exit 1
+          fi
+
+      - uses: ./.github/actions/rust-setup
+
+      - name: Bump workspace version in Cargo.toml
+        shell: bash
+        run: sed -i "s/^version = \".*\"/version = \"${VERSION}\"/" Cargo.toml
+
+      - name: Bump SDK package.json
+        shell: bash
+        run: |
+          jq --arg v "${VERSION}" '.version = $v' packages/keydock-sdk/package.json > /tmp/pkg.json
+          mv /tmp/pkg.json packages/keydock-sdk/package.json
+
+      - name: Bump SDK jsr.json
+        shell: bash
+        run: |
+          jq --arg v "${VERSION}" '.version = $v' packages/keydock-sdk/jsr.json > /tmp/jsr.json
+          mv /tmp/jsr.json packages/keydock-sdk/jsr.json
+
+      - name: Refresh Cargo.lock for workspace version bump
+        shell: bash
+        run: cargo metadata --format-version 1 > /dev/null
+
+      - name: Configure git and push release branch
+        shell: bash
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          branch="release/v${VERSION}"
+          git checkout -b "${branch}"
+
+          git add Cargo.toml Cargo.lock \
+            packages/keydock-sdk/package.json \
+            packages/keydock-sdk/jsr.json
+
+          git commit -m "chore(release): bump version to ${VERSION}"
+          git push origin "${branch}"
+
+      - name: Open pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body_file=$(mktemp)
+          cat > "${body_file}" << EOF
+          Automated version bump for **v${VERSION}**.
+
+          ### Checklist
+          - [ ] CI is green on this PR
+          - [ ] Changelog / release notes reviewed
+          - [ ] Version confirmed in \`Cargo.toml\`, \`packages/keydock-sdk/package.json\`, and \`packages/keydock-sdk/jsr.json\`
+
+          ### After merge
+          Create and push the tag from \`master\`:
+
+          \`\`\`bash
+          git checkout master
+          git pull
+          git tag v${VERSION}
+          git push origin v${VERSION}
+          \`\`\`
+          EOF
+
+          gh pr create \
+            --base master \
+            --head "release/v${VERSION}" \
+            --title "chore(release): bump version to ${VERSION}" \
+            --body-file "${body_file}"
