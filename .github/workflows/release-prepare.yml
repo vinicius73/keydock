@@ -144,9 +144,20 @@ jobs:
           \`\`\`
           EOF
 
-          gh pr create \
+          existing="$(gh pr list \
             --repo "${{ github.repository }}" \
-            --base master \
             --head "release/v${VERSION}" \
-            --title "chore(release): bump version to ${VERSION}" \
-            --body-file "${body_file}"
+            --base master \
+            --json url \
+            --jq '.[0].url')"
+
+          if [[ -n "${existing}" ]]; then
+            echo "PR already exists: ${existing}"
+          else
+            gh pr create \
+              --repo "${{ github.repository }}" \
+              --base master \
+              --head "release/v${VERSION}" \
+              --title "chore(release): bump version to ${VERSION}" \
+              --body-file "${body_file}"
+          fi
