@@ -10,6 +10,9 @@ on:
     branches: [master]
     paths:
       - site/**
+      # Release prepare only bumps workspace manifests — still validate site on that PR.
+      - Cargo.toml
+      - Cargo.lock
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

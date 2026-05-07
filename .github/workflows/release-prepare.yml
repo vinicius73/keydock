@@ -35,7 +35,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           ref: master
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Ensure release tag does not exist on remote
         shell: bash
@@ -80,6 +80,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           branch="release/v${VERSION}"
+
           git checkout -b "${branch}"
 
           git add Cargo.toml Cargo.lock \
@@ -87,24 +88,48 @@ jobs:
             packages/keydock-sdk/jsr.json
 
           git commit -m "chore(release): bump version to ${VERSION}"
-          git push origin "${branch}"
 
-      # Default GITHUB_TOKEN cannot call createPullRequest unless the repo enables
-      # Settings → Actions → General → "Allow GitHub Actions to create and approve pull requests".
-      # Optionally set repository secret RELEASE_PREPARE_PR_TOKEN (fine-grained PAT: Contents Read,
-      # Pull requests Read and write on this repo) to open the PR when that setting is unavailable.
+          # Re-run safety: only overwrite if nobody else pushed to the branch since our check.
+          remote_sha="$(git ls-remote --heads origin "${branch}" | awk 'NR == 1 { print $1; exit }')"
+          if [[ -n "${remote_sha}" ]]; then
+            git push \
+              "--force-with-lease=refs/heads/${branch}:${remote_sha}" \
+              origin "${branch}"
+          else
+            git push origin "${branch}"
+          fi
+
+  ci-rust:
+    needs: prepare
+    uses: ./.github/workflows/ci-rust.yml
+    with:
+      ref: release/v${{ inputs.version }}
+
+  ci-sdk:
+    needs: prepare
+    uses: ./.github/workflows/ci-sdk.yml
+    with:
+      ref: release/v${{ inputs.version }}
+
+  # github.token PRs do not trigger pull_request workflows; CI already ran above via workflow_call.
+  open-pr:
+    needs: [ci-rust, ci-sdk]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
       - name: Open pull request
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PREPARE_PR_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           body_file=$(mktemp)
           cat > "${body_file}" << EOF
           Automated version bump for **v${VERSION}**.
 
+          CI (Rust and SDK) passed on the release branch before this PR was opened.
+
           ### Checklist
-          - [ ] CI is green on this PR
           - [ ] Changelog / release notes reviewed
           - [ ] Version confirmed in \`Cargo.toml\`, \`packages/keydock-sdk/package.json\`, and \`packages/keydock-sdk/jsr.json\`
 
@@ -120,6 +145,7 @@ jobs:
           EOF
 
           gh pr create \
+            --repo "${{ github.repository }}" \
             --base master \
             --head "release/v${VERSION}" \
             --title "chore(release): bump version to ${VERSION}" \

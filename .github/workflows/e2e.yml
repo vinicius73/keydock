@@ -12,7 +12,6 @@ on:
         type: string
         default: info
 
-# Always cancel previous runs on re-dispatch to avoid wasting runner minutes.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

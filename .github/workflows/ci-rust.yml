@@ -1,6 +1,13 @@
 name: CI (Rust)
 
 on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to check out (defaults to the triggering commit)'
+        type: string
+        required: false
+        default: ''
   workflow_dispatch:
   push:
     branches: [master]
@@ -19,6 +26,7 @@ on:
       - crates/**
       - apps/**
 
+# Via workflow_call, github.ref is the caller's ref (master): concurrent master runs queue, not cancel.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
@@ -36,6 +44,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/rust-setup
         with:
@@ -54,6 +64,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/rust-setup
 
