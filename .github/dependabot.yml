@@ -1,0 +1,39 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  # Separate entry required: Dependabot does not follow local action references
+  # and will not scan .github/actions/ from the root entry above.
+  - package-ecosystem: github-actions
+    directory: /.github/actions/rust-setup
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: /.github/actions/bun-setup
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    groups:
+      github-actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 3

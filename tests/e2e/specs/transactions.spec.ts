@@ -1,0 +1,83 @@
+import { expect, test } from "@playwright/test";
+
+import type { KeydockE2eConfig } from "../src/browser-config.js";
+import {
+  createBucket,
+  createClient,
+  deleteBucketBestEffort,
+  e2eBaseUrl,
+  type CreatedBucketFixture,
+} from "../support/sdk-admin.js";
+import { randomKey, uniqueBucketData } from "../support/test-data.js";
+
+test.describe("transaction SDK browser flow", () => {
+  let fixture: CreatedBucketFixture | undefined;
+
+  test.afterEach(async () => {
+    await deleteBucketBestEffort(fixture);
+    fixture = undefined;
+  });
+
+  test("commits set and delete operations and preserves counter results", async ({ page }) => {
+    fixture = await createBucket(uniqueBucketData("txn"));
+    const firstKey = randomKey("txn:first");
+    const secondKey = randomKey("txn:second");
+    const deletedKey = randomKey("txn:deleted");
+    const counterKey = randomKey("txn:counter");
+    const jsonIntegerKey = randomKey("txn:json-integer");
+    const jsonBooleanKey = randomKey("txn:json-boolean");
+    const jsonArrayKey = randomKey("txn:json-array");
+    const stringNumericKey = randomKey("txn:string-numeric");
+    const ttlKey = randomKey("txn:ttl");
+    const partialSetKey = randomKey("partial:set");
+    const partialDeleteKey = randomKey("partial:delete");
+    const bucket = createClient(fixture.credentials.secretKey).bucket(fixture.id);
+
+    await bucket.setText(deletedKey, "will-be-deleted");
+
+    const config: KeydockE2eConfig = {
+      url: e2eBaseUrl(),
+      bucketId: fixture.id,
+      auth: fixture.credentials.secretKey,
+      keys: {
+        firstKey,
+        secondKey,
+        deletedKey,
+        counterKey,
+        jsonIntegerKey,
+        jsonBooleanKey,
+        jsonArrayKey,
+        stringNumericKey,
+        ttlKey,
+        partialSetKey,
+        partialDeleteKey,
+      },
+    };
+
+    await page.addInitScript((input) => {
+      window.__KEYDOCK_E2E__ = input;
+    }, config);
+
+    await page.goto("/apps/transactions/");
+
+    await expect(page.getByTestId("app-status")).toHaveText("done");
+    await expect(page.getByTestId("transaction-result")).toHaveText("transaction committed");
+    await expect(page.getByTestId("first-read-result")).toHaveText("one");
+    await expect(page.getByTestId("second-read-result")).toHaveText("two");
+    await expect(page.getByTestId("deleted-read-result")).toHaveText("null");
+    await expect(page.getByTestId("counter-result")).toHaveText("1");
+    await expect(page.getByTestId("counter-result")).toHaveAttribute("data-counter-raw", "1");
+    await expect(page.getByTestId("counter-result")).toHaveAttribute(
+      "data-counter-kind",
+      "integer",
+    );
+    await expect(page.getByTestId("counter-result")).toHaveAttribute("data-counter-number", "1");
+    await expect(page.getByTestId("txn-json-integer")).toHaveText("42");
+    await expect(page.getByTestId("txn-json-boolean")).toHaveText("true");
+    await expect(page.getByTestId("txn-json-array")).toHaveText("[1,2,3]");
+    await expect(page.getByTestId("txn-string-numeric")).toHaveText("42");
+    await expect(page.getByTestId("txn-ttl-per-item")).toHaveText("null");
+    await expect(page.getByTestId("txn-no-partial-mutation")).toHaveText("KeydockError:403:null");
+    await expect(page.getByTestId("txn-empty-sdk-rejected")).toHaveText("KeydockValidationError");
+  });
+});

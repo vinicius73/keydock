@@ -1,0 +1,441 @@
+---
+title: HTTP API Reference
+description: Complete reference for all Keydock HTTP endpoints — buckets, keys, counters, tokens, transactions, and operational routes.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+All product API endpoints are mounted under:
+
+```
+/api/v1
+```
+
+Operational endpoints (`/health`, `/ready`, `/metrics`) are at the root (relative to your Keydock base URL — for example `http://127.0.0.1:8080`).
+
+On a running Keydock instance:
+
+- Swagger UI — `GET /swagger-ui/` (interactive explorer)
+- OpenAPI JSON — `GET /api-docs/openapi.json`
+
+These paths are served by Keydock itself, **not** by this documentation site — open them against your deployment origin.
+
+---
+
+## Authentication
+
+Credentials can be sent in three ways, evaluated in this order:
+
+1. `Authorization: Bearer <credential>`
+2. `Authorization: Basic <base64(username:password)>` — username is used as the credential
+3. Query parameters: `?access_token=<credential>` or `?key=<credential>`
+
+Bucket credentials:
+
+| Credential | Access |
+|---|---|
+| `secret_key` | Admin — all operations including policy management and token minting |
+| `read_key` | Read and list keys |
+| `write_key` | Write keys |
+| Temporary token | Scoped by prefix and explicit permissions |
+
+Anonymous access depends on which credentials are configured. A bucket with no credentials is fully public. Configuring `read_key` restricts anonymous read/list. Configuring `write_key` restricts anonymous write. See the [README](https://github.com/vinicius73/keydock#authentication) for the full access matrix.
+
+---
+
+## Operational Endpoints
+
+### Health
+
+```
+GET /health
+```
+
+Liveness probe. The handler **does not** probe storage — `storage` is always `"ok"` in this response shape (OpenAPI-compatible field only).
+
+```json
+{"status":"ok","storage":"ok","version":"0.1.0-alpha"}
+```
+
+### Readiness
+
+```
+GET /ready
+```
+
+Checks whether metadata storage is reachable. On success (`200`): same shape as `/health`. On failure (`503`):
+
+```json
+{"status":"degraded","storage":"error","version":"0.1.0-alpha"}
+```
+
+### Metrics
+
+```
+GET /metrics
+```
+
+Prometheus metrics in text exposition format.
+
+### OpenAPI
+
+```
+GET /api-docs/openapi.json
+GET /swagger-ui/
+```
+
+---
+
+## Bucket API
+
+All bucket routes are under `/api/v1`.
+
+### Create Bucket
+
+```
+POST /api/v1/
+Content-Type: application/x-www-form-urlencoded
+```
+
+Form fields:
+
+| Field | Required | Description |
+|---|---|---|
+| `email` | Yes | Admin label for the bucket |
+| `secret_key` | No | Admin credential |
+| `read_key` | No | Read/list credential |
+| `write_key` | No | Write credential |
+| `signing_key` | No | Used only to mint temporary tokens |
+| `default_ttl` | No | Default TTL in seconds (0 = no expiry; omitting applies the hosted default of 604800 s) |
+
+Response: bucket ID as `text/plain`.
+
+```bash
+curl -X POST http://127.0.0.1:8080/api/v1/ \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=owner@example.com' \
+  --data-urlencode 'secret_key=admin-secret' \
+  --data-urlencode 'signing_key=token-signing-secret'
+```
+
+### Get Bucket Policy
+
+```
+GET /api/v1/{bucket}
+Authorization: Bearer <secret_key>
+```
+
+Returns a public projection of the bucket policy. Secrets and key hashes are never included.
+
+```json
+{
+  "default_ttl": 604800,
+  "has_secret_key": true,
+  "has_read_key": false,
+  "has_write_key": false,
+  "has_signing_key": true,
+  "signing_key_generation": 0,
+  "anonymous_access": {
+    "read": true,
+    "write": true,
+    "enumerate": true,
+    "delete": false
+  }
+}
+```
+
+### Check Bucket Existence
+
+```
+HEAD /api/v1/{bucket}
+Authorization: Bearer <secret_key>
+```
+
+Returns `200` if the bucket exists and the credential has admin access, `404` otherwise.
+
+### Update Bucket Policy
+
+```
+PATCH /api/v1/{bucket}
+Authorization: Bearer <secret_key>
+Content-Type: application/json
+```
+
+Supported fields: `secret_key`, `read_key`, `write_key`, `signing_key`, `default_ttl`. Unknown fields are rejected with `400`.
+
+Patch semantics:
+
+- Field absent — leave unchanged
+- Field `null` — clear the value (not allowed for `secret_key`)
+- Field string/number — set or rotate
+
+```bash
+curl -X PATCH "http://127.0.0.1:8080/api/v1/$BUCKET" \
+  -H 'Authorization: Bearer admin-secret' \
+  -H 'Content-Type: application/json' \
+  -d '{"read_key":"new-read-secret","default_ttl":3600}'
+```
+
+Returns `204 No Content`.
+
+### Delete Bucket
+
+```
+DELETE /api/v1/{bucket}
+DELETE /api/v1/{bucket}/
+Authorization: Bearer <secret_key>
+```
+
+Both forms are equivalent. Returns `204 No Content`.
+
+### List Keys
+
+```
+GET /api/v1/{bucket}/
+```
+
+Query parameters:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `prefix` | — | Only return keys with this prefix |
+| `limit` | 10000 | Maximum number of results |
+| `skip` | 0 | Keys to skip after ordering |
+| `reverse` | false | Reverse lexicographic order |
+| `values` | false | Include stored values |
+| `format` | `text` | Response format: `text`, `json`, or `jsonl` |
+
+Format can also be selected with the `Accept` header: `application/json`, `application/x-ndjson`, or `text/plain`.
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/$BUCKET/?format=json&prefix=user:" \
+  -H 'Authorization: Bearer read-secret'
+```
+
+```json
+["user:1","user:2","user:42"]
+```
+
+With values (`?values=true&format=json`):
+
+```json
+[["user:42",{"name":"Ana"}]]
+```
+
+---
+
+## Key API
+
+All key routes are under `/api/v1/{bucket}/{key}`.
+
+Keys are percent-encoded in the path. The server percent-decodes them before storage, so `user%2F42` and `user/42` refer to the same logical key. Clients should encode `/`, spaces, and other reserved characters.
+
+Key limits: up to 128 bytes. Value limit: up to 16 KiB.
+
+### Write Key
+
+```
+PUT  /api/v1/{bucket}/{key}
+POST /api/v1/{bucket}/{key}   (primary method, PUT is an alias)
+```
+
+Optional query parameter: `?ttl=<seconds>` — overrides the bucket default TTL.
+
+Value type is inferred from `Content-Type` and the body:
+
+- `Content-Type: application/json` → stored as JSON
+- `Content-Type: text/plain` → stored as UTF-8 text
+- UTF-8 body that parses as a number → stored as `Int64` or `Float64`
+- UTF-8 body that is valid JSON → stored as JSON
+- Otherwise → raw bytes
+
+```bash
+curl -X PUT "http://127.0.0.1:8080/api/v1/$BUCKET/counter?ttl=3600" \
+  -H 'Authorization: Bearer write-secret' \
+  -d '0'
+```
+
+The stored value is echoed in the response.
+
+### Read Key
+
+```
+GET /api/v1/{bucket}/{key}
+```
+
+Returns the stored value with the appropriate `Content-Type`. Returns `404` if the key does not exist or has expired.
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/$BUCKET/user:42" \
+  -H 'Authorization: Bearer read-secret'
+```
+
+### Check Key Existence
+
+```
+HEAD /api/v1/{bucket}/{key}
+```
+
+Returns `200` if the key exists and has not expired. Body is empty, `Content-Type` matches `GET`.
+
+### Delete Key
+
+```
+DELETE /api/v1/{bucket}/{key}
+```
+
+Returns `204 No Content`. Returns `404` if the key does not exist.
+
+---
+
+## Counter
+
+```
+PATCH /api/v1/{bucket}/{key}
+```
+
+Optional query parameter: `?ttl=<seconds>`.
+
+The request body must be a signed decimal delta: `+N` or `-N` where `N` is an integer or float.
+
+```bash
+curl -X PATCH "http://127.0.0.1:8080/api/v1/$BUCKET/page-views" \
+  -H 'Authorization: Bearer write-secret' \
+  -d '+1'
+```
+
+Response body is the new counter value.
+
+Type promotion rules:
+
+- `Int64 + Int64` → `Int64`
+- Any float operand → `Float64`
+- Applying a counter delta to a missing key creates the key with the delta as its initial value
+- `NaN`, `Inf`, or overflow → `400`
+
+<Aside type="caution">
+Counter increments are not retried by default by the SDK. A network failure mid-request is ambiguous — the server may or may not have applied the increment.
+</Aside>
+
+---
+
+## Temporary Tokens
+
+Tokens allow scoping credentials to a key prefix and a set of permissions.
+
+### Create Token
+
+```
+POST /api/v1/{bucket}/tokens/
+Authorization: Bearer <secret_key>
+Content-Type: application/x-www-form-urlencoded
+```
+
+The bucket must have a `signing_key` configured. Returns `503` if it does not.
+
+Form fields:
+
+| Field | Required | Description |
+|---|---|---|
+| `prefix` | Yes | Non-empty key prefix the token is restricted to |
+| `permissions` | Yes | Comma-separated: `read`, `write`, `enumerate`, `delete` |
+| `ttl` | Yes | Token lifetime in seconds (must be > 0) |
+
+```bash
+curl -X POST "http://127.0.0.1:8080/api/v1/$BUCKET/tokens/" \
+  -H 'Authorization: Bearer admin-secret' \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'prefix=user:42:' \
+  --data-urlencode 'permissions=read,write,enumerate' \
+  --data-urlencode 'ttl=900'
+```
+
+Response:
+
+```json
+{"access_token":"<jwt>"}
+```
+
+Use the token as a Bearer credential:
+
+```bash
+curl "http://127.0.0.1:8080/api/v1/$BUCKET/user:42:profile" \
+  -H 'Authorization: Bearer <jwt>'
+```
+
+Tokens are restricted to their configured prefix and permissions. A token scoped to `user:42:` cannot access `admin:config`. Rotating the bucket `signing_key` invalidates all previously issued tokens.
+
+---
+
+## Transactions
+
+Atomic multi-key operations.
+
+```
+POST /api/v1/{bucket}
+Authorization: Bearer <credential>
+Content-Type: application/json
+```
+
+Request body:
+
+```json
+{
+  "txn": [
+    { "set": "profile:name", "value": "Ada", "ttl": 3600 },
+    { "delete": "profile:old-name" }
+  ]
+}
+```
+
+Each operation is one of:
+
+- `{ "set": "<key>", "value": <json>, "ttl": <seconds> }` — `ttl` is optional
+- `{ "delete": "<key>" }`
+
+Value rules for `set`:
+
+- JSON strings are stored as UTF-8 text
+- Numbers, booleans, arrays, and objects are stored as JSON
+- `null` is rejected with `400`
+
+```bash
+curl -X POST "http://127.0.0.1:8080/api/v1/$BUCKET" \
+  -H 'Authorization: Bearer write-secret' \
+  -H 'Content-Type: application/json' \
+  -d '{"txn":[{"set":"k1","value":"hello"},{"delete":"k2"}]}'
+```
+
+Returns `204 No Content` on success. All operations either commit together or none do.
+
+<Aside type="caution">
+Transactions are not retried by default by the SDK. Do not retry manually without verifying idempotency.
+</Aside>
+
+---
+
+## Error Responses
+
+All errors use a consistent JSON envelope:
+
+```json
+{
+  "error": {
+    "code": 404,
+    "message": "not_found"
+  }
+}
+```
+
+Common messages:
+
+| Message | HTTP status |
+|---|---|
+| `bad_request` | 400 |
+| `unauthorized` | 401 |
+| `forbidden` | 403 |
+| `not_found` | 404 |
+| `not_acceptable` | 406 |
+| `method_not_allowed` | 405 |
+| `service_unavailable` | 503 |
+| `internal_error` | 500 |

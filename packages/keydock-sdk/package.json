@@ -1,0 +1,48 @@
+{
+  "name": "keydock-sdk",
+  "version": "0.2.0-alpha.1",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vinicius73/keydock.git",
+    "directory": "packages/keydock-sdk"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "ky": "^2.0.0"
+  },
+  "devDependencies": {
+    "ky": "2.0.2",
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.62.0",
+    "rolldown": "^1.0.0-rc.18",
+    "rolldown-plugin-dts": "^0.23.2",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck && rolldown -c",
+    "test": "bun test",
+    "fmt": "oxfmt --write src test",
+    "fmt:check": "oxfmt --check src test",
+    "lint": "oxlint src test",
+    "lint:fix": "oxlint src test --fix",
+    "fix": "bun run fmt && bun run lint:fix",
+    "qa": "bun run fmt:check && bun run lint && bun run typecheck && bun test"
+  }
+}

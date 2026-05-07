@@ -1,0 +1,70 @@
+---
+description: Testing patterns and assertions for Rust code
+globs: "{crates,apps}/**/*_test.rs"
+---
+
+# Testing Patterns
+
+## Quick Reference
+
+**MUST** follow these mandatory practices:
+
+- Use `pretty_assertions::assert_eq` for better error messages
+- Use `rstest` for parametrized tests
+- Place tests in same file with `#[cfg(test)]` when no external dependencies
+- Convert `assert!` to `assert_eq!(condition, true, ...)` format
+
+## Unit Tests
+
+**MUST** place tests in the same file when there's no database or HTTP integration:
+
+```rust
+// ✅ Good: Tests in same file with pretty_assertions
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pretty_assertions::assert_eq;
+
+    #[tokio::test]
+    async fn test_create_deal() {
+        let result = create_deal().await;
+        assert_eq!(result.is_ok(), true);
+    }
+}
+```
+
+## Parametrized Tests with rstest
+
+**MUST** use `rstest` to parametrize tests and merge redundant test cases:
+
+```rust
+use rstest::*;
+use pretty_assertions::assert_eq;
+
+#[rstest]
+#[case("$1,234.56", Some(1234.56))]
+#[case("999.99", Some(999.99))]
+#[case("", None)]
+#[case("N/A", None)]
+fn test_parse_price_string(#[case] input: &str, #[case] expected: Option<f64>) {
+    assert_eq!(parse_price_string(input), expected);
+}
+```
+
+## Test Organization
+
+**MUST** follow these test rules:
+
+- **MUST** use `pretty_assertions::assert_eq` for better error messages
+- **MUST** use `rstest` for parametrized tests to merge redundant test cases
+- **SHOULD** group related tests with descriptive comments
+- **SHOULD** create helper functions to reduce duplication
+- **MUST** prefer parametrized tests over multiple similar test functions
+
+**Note**: `pretty_assertions` only provides `assert_eq!` and `assert_ne!` macros. There is no `assert!` macro in `pretty_assertions`, so boolean conditions should be converted to `assert_eq!(condition, true, ...)` format.
+
+## Related Rules
+
+- `.cursor/rules/testing-unit.mdc` - Complete unit testing guidelines
+- `.cursor/rules/testing-e2e.mdc` - Complete E2E testing guidelines
+- `.cursor/rules/rust-code-style.mdc` - General code style guidelines

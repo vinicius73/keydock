@@ -1,0 +1,83 @@
+---
+description: Advanced async/await patterns for this repo (Tokio, cancellation, concurrency limits)
+globs: "{crates,apps}/**/*.rs"
+---
+
+# Async/Await – Advanced Patterns
+
+This repo uses `tokio` and `tracing`. Keep async code explicit and cancellation-friendly.
+
+## Related Rules
+
+- `.cursor/rules/async-await-basic.mdc` - Basic async patterns
+- `.cursor/rules/error-handling.mdc` - Layered errors and boundary mapping
+- `.cursor/rules/rust-style-instrumentation.mdc` - `#[instrument(skip_all, ...)]`
+
+## Concurrency limits (backpressure)
+
+Prefer limiting concurrency explicitly to avoid saturating IO and memory.
+
+```rust
+use std::sync::Arc;
+
+use tokio::sync::Semaphore;
+
+pub async fn run_with_limit(
+    items: Vec<(String, String)>,
+    max_concurrent: usize,
+) -> Result<(), keydock_usecase::UseCaseError> {
+    let sem = Arc::new(Semaphore::new(max_concurrent));
+    let mut handles = Vec::with_capacity(items.len());
+
+    for (bucket, key) in items {
+        let permit = sem.clone().acquire_owned().await.expect("semaphore closed");
+        handles.push(tokio::spawn(async move {
+            let _permit = permit; // held until task finishes
+            do_work(bucket, key).await
+        }));
+    }
+
+    for h in handles {
+        // JoinError should be treated as unexpected internal failure at the boundary.
+        h.await.expect("task panicked")?;
+    }
+
+    Ok(())
+}
+```
+
+## CancellationToken
+
+Use `tokio_util::sync::CancellationToken` when implementing long-running background work.
+
+```rust
+use tokio_util::sync::CancellationToken;
+
+pub async fn worker_loop(token: CancellationToken) -> Result<(), keydock_usecase::UseCaseError> {
+    loop {
+        tokio::select! {
+            _ = token.cancelled() => break,
+            result = tick_once() => result?,
+        }
+    }
+    Ok(())
+}
+```
+
+## Timeout wrapper
+
+Keep timeouts at call sites where the SLA matters.
+
+```rust
+use tokio::time::{timeout, Duration};
+
+pub async fn with_timeout<T>(
+    dur: Duration,
+    fut: impl std::future::Future<Output = Result<T, keydock_usecase::UseCaseError>>,
+) -> Result<T, keydock_usecase::UseCaseError> {
+    match timeout(dur, fut).await {
+        Ok(r) => r,
+        Err(_) => Err(keydock_usecase::UseCaseError::NotImplemented),
+    }
+}
+```

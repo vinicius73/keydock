@@ -1,0 +1,46 @@
+name: CI (SDK)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - packages/keydock-sdk/**
+  pull_request:
+    branches: [master]
+    paths:
+      - packages/keydock-sdk/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/keydock-sdk
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: packages/keydock-sdk
+
+      - name: Format check
+        run: bun run fmt:check
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Test
+        run: bun test

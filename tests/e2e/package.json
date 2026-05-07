@@ -1,0 +1,38 @@
+{
+  "name": "keydock-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:sdk": "cd ../../packages/keydock-sdk && bun run build",
+    "install:browsers": "playwright install chromium",
+    "pretest": "bun run build:sdk",
+    "build": "tsc --noEmit && vite build",
+    "test": "bun run build && playwright test",
+    "test:artifacts": "E2E_SCREENSHOT=only-on-failure E2E_VIDEO=retain-on-failure bun run test",
+    "test:record": "E2E_SCREENSHOT=on E2E_VIDEO=on bun run test",
+    "test:ui": "bun run build:sdk && bun run build && playwright test --ui --headed --workers=1",
+    "report": "playwright show-report playwright-report",
+    "dev": "bun run build:sdk && vite",
+    "fmt": "oxfmt --write .",
+    "fmt:check": "oxfmt --check .",
+    "lint": "oxlint apps specs src support *.ts",
+    "lint:fix": "oxlint apps specs src support *.ts --fix",
+    "fix": "bun run fmt && bun run lint:fix"
+  },
+  "dependencies": {
+    "keydock-sdk": "file:../../packages/keydock-sdk",
+    "ky": "^2.0.2",
+    "vue": "^3.5.33"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@tailwindcss/vite": "^4.2.4",
+    "@types/node": "^25.6.0",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "oxfmt": "^0.47.0",
+    "oxlint": "^1.62.0",
+    "tailwindcss": "^4.2.4",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.10"
+  }
+}

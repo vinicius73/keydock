@@ -1,0 +1,98 @@
+---
+description: HTTP integration testing (Axum routes) with axum-test + keydock-testkit
+globs: "apps/**/tests/**/*.rs"
+---
+
+# HTTP Integration Testing Guidelines
+
+This repository tests HTTP routes primarily via integration tests under `apps/*/tests/`
+using `keydock_testkit::TestContext` (full Axum router + temp storage) and `axum_test::TestServer`.
+
+## Related Rules
+
+- `.cursor/rules/project-structure.mdc` - Where routes and tests live
+- `.cursor/rules/error-handling.mdc` - Error shapes and mapping at the HTTP boundary
+- `.cursor/rules/rust-style-testing.mdc` - Assertions and general test style
+
+## File Organization
+
+- **App integration tests**: `apps/<app>/tests/*.rs` (preferred for HTTP)
+  - Example: `apps/keydock/tests/health.rs`
+- **Shared fixtures**: `crates/keydock-testkit/`
+  - Example: `keydock_testkit::TestContext::new()`, `BucketSetup`, `TokenSetup`, `basic_auth_header`
+
+## Mandatory Requirement: assert the complete response you care about
+
+**MUST** assert the full JSON shape for the endpoint under test.
+
+- For small responses (like `/health`), assert the entire JSON body.
+- For larger responses, assert all fields that are part of the public API contract (including nullables if present).
+- When a field is dynamic (e.g. `access_token`), extract it from the parsed body, then assert the full object with that value (see `apps/keydock/tests/auth_tokens.rs`).
+
+## Setup helpers
+
+Use `keydock_testkit::BucketSetup` with `Default` + named constructors for common bucket policies:
+
+- `BucketSetup::public()` — no static credentials
+- `BucketSetup::admin(secret)` — admin via `secret_key`
+- `BucketSetup::read_only(read)` — read static key
+- `BucketSetup::write_only(write)` — write static key
+- `BucketSetup::restricted(read, write)` — read + write
+- `BucketSetup::signed(secret, signing)` — secret + signing key (token flows)
+- `BucketSetup::signing_only(signing)` — signing key without direct static credentials
+
+For one-off cases, use struct update syntax: `BucketSetup { email: "x@example.com".into(), ..BucketSetup::signed("sec", "sign") }`.
+
+Token helpers: `TokenSetup::read(prefix, ttl)` (both required; pass `""` or `0`/negative TTL to drive `400` rejection paths) and `TestContext::mint_expired_read_token(bucket_id, signing_secret)` for negative checks that need an already-expired token; policy updates: `PolicyPatch::rotate_signing_key("new")`.
+
+## HTTP surface stays explicit in tests
+
+- **Paths**: Keep route strings explicit (e.g. `format!("/{bid}/k1")`). They document the public API contract; do not hide them behind path builders.
+- **Auth**: Keep auth injection explicit on the request (`.authorization_bearer(...)`, `.authorization(...)`, query params). Do not wrap these in helpers that hide which credential is used — auth is often the subject under test.
+
+## Standard Pattern
+
+```rust
+use keydock_testkit::TestContext;
+use serde_json::json;
+
+#[tokio::test]
+async fn route_returns_expected_body() {
+    let ctx = TestContext::new();
+
+    let response = ctx.server.get("/health").await;
+    response.assert_status_ok();
+    response.assert_json(&json!({
+        "status": "ok",
+        "version": "0.1.0-alpha"
+    }));
+}
+```
+
+## Testing error responses
+
+This repo’s current baseline error body is:
+
+```json
+{ "error": "<message>" }
+```
+
+When testing error responses:
+
+- **MUST** assert the HTTP status code.
+- **MUST** assert the JSON error body shape.
+- **SHOULD** avoid asserting internal/library error messages (prefer stable, user-facing messages).
+
+## Commands
+
+Run integration tests with:
+
+```bash
+cargo test -p keydock
+```
+
+Or, using the repository `justfile` wrappers:
+
+```bash
+just test keydock
+```

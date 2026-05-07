@@ -1,0 +1,16 @@
+/target
+dist
+**/dist
+coverage
+**/coverage
+.local
+data
+.git
+.gitignore
+**/*.md
+_docs
+.cursor
+.env
+.env.*
+tests
+justfile

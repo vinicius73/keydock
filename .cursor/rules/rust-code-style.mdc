@@ -1,0 +1,334 @@
+---
+description: Rust code style and formatting guidelines
+globs: "{crates,apps}/**/*.rs"
+---
+
+# Rust Code Style Guide
+
+Follow these style patterns to maintain consistency across the project. This guide complements other project-specific rules for error handling, testing, and async patterns.
+
+**LLM Persona (decision-making guidance)**:
+
+You are a highly capable Rust engineer focused on correctness, security, and maintainability.
+
+- **MUST** prefer designs that prevent invalid states (types/invariants) over “stringly-typed” code.
+- **MUST** optimize for low cognitive load: simple control flow, small functions, clear names, and predictable module boundaries.
+- **MUST** avoid “clever” solutions unless there is measurable benefit; prefer explicit, readable code.
+- **MUST** treat warnings (clippy, compiler, lints) as bugs until proven otherwise; never suppress without a strong justification.
+- **MUST** use the repository’s established patterns for error handling, async, instrumentation, and testing (see related rules).
+- **SHOULD** make changes minimal and localized; refactor only when it reduces complexity or prevents future bugs.
+
+## Related Rules
+
+This rule works together with:
+
+- `.cursor/rules/project-structure.mdc` - Project structure and file locations
+- `.cursor/rules/rust-style-imports.mdc` - Import organization and naming conventions
+- `.cursor/rules/rust-style-instrumentation.mdc` - Tracing instrumentation and logging
+- `.cursor/rules/rust-style-testing.mdc` - Testing patterns and assertions
+- `.cursor/rules/error-handling.mdc` - Error handling patterns
+- `.cursor/rules/async-await.mdc` - Async/await patterns
+- `.cursor/rules/rust-qa-loop.mdc` - QA validation process
+
+## Quick Reference
+
+### Critical Rules (MUST)
+
+**MUST** follow these mandatory practices:
+
+- **MUST** format with `rustfmt` before committing (`cargo fmt --all`)
+- **MUST** fix all clippy warnings (`cargo clippy --workspace --all-targets`)
+- **MUST** use `?` operator for error propagation
+- **MUST** use appropriate visibility modifiers (`pub`, `pub(crate)`, private)
+- **MUST** follow Rust naming conventions (see `.cursor/rules/rust-style-imports.mdc`)
+- **MUST** instrument public functions (see `.cursor/rules/rust-style-instrumentation.mdc`)
+- **MUST** use structured logging (see `.cursor/rules/rust-style-instrumentation.mdc`)
+- **MUST** use `pretty_assertions::assert_eq` in tests (see `.cursor/rules/rust-style-testing.mdc`)
+
+### Important Patterns (SHOULD)
+
+**SHOULD** follow these recommended practices:
+
+- **SHOULD** document public APIs with `///` only when non-obvious
+- **SHOULD** use early returns for validation logic
+- **SHOULD** prefer pattern matching over multiple if-else statements
+- **SHOULD** use constants for magic numbers
+- **SHOULD** keep functions small and focused (single responsibility)
+
+## Formatting and Linting
+
+### Automatic Formatting
+
+**MUST** always use `rustfmt` for formatting:
+
+```bash
+cargo fmt --all
+```
+
+### Linting
+
+**MUST** use `clippy` for linting and fix all warnings:
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --all-targets
+```
+
+### Common Clippy Rules
+
+**MUST** follow these clippy rules:
+
+- **MUST** use `?` operator for error propagation
+- **MUST** avoid unnecessary clones - prefer references when possible
+- **MUST** use `matches!` macro for pattern matching in boolean contexts
+- **MUST** prefer `if let` over `match` for single pattern matching
+- **MUST** never use `unwrap()` or `expect()` in production code (see Error Handling section)
+
+```rust
+// ✅ Good: Use ? for error propagation
+pub async fn get_key(bucket: &str, key: &str) -> Result<Vec<u8>, keydock_usecase::UseCaseError> {
+    let value = find_key(bucket, key).await?;
+    Ok(value)
+}
+
+// ❌ Bad: Manual error handling when ? can be used
+pub async fn get_key(bucket: &str, key: &str) -> Result<Vec<u8>, keydock_usecase::UseCaseError> {
+    match find_key(bucket, key).await {
+        Ok(value) => Ok(value),
+        Err(e) => Err(e), // ❌ Use ? instead
+    }
+}
+```
+
+```rust
+// ✅ Good: Use matches! for boolean pattern matching
+if matches!(command, keydock_config::Command::Serve(_)) {
+    // ...
+}
+
+// ❌ Bad: Verbose pattern matching
+let is_serve = match command {
+    keydock_config::Command::Serve(_) => true,
+};
+```
+
+## Imports and Naming
+
+For detailed import organization and naming conventions, see `.cursor/rules/rust-style-imports.mdc`.
+
+## Documentation
+
+### Code Should Be Self-Documenting
+
+**SHOULD** write clear, objective code that explains itself through good naming and structure. **MUST** only add comments when a non-obvious decision needs explanation.
+
+### When to Document
+
+**SHOULD** use `///` for public APIs only when:
+
+- The function has non-obvious behavior or side effects
+- A specific design decision needs explanation
+- Performance characteristics are important
+
+```rust
+// Good: Explains why metadata-only reading is used
+/// Load configuration from file and keep the error typed (no `anyhow` in libraries)
+/// to make failure modes explicit for callers.
+pub fn load_config(path: &Path) -> Result<keydock_config::Config, keydock_config::ConfigError> {
+    // implementation
+}
+```
+
+### Internal Comments
+
+**MUST** use `//` only to explain non-obvious decisions or complex logic:
+
+```rust
+// Calculate quality score: 70% resolution weight, 30% file size weight
+fn calculate_quality_score(width: u32, height: u32, size_bytes: i64) -> f64 {
+    // implementation
+}
+```
+
+## Error Handling
+
+**MUST** follow comprehensive error handling guidelines defined in `.cursor/rules/error-handling.mdc`.
+
+This includes:
+
+- **MUST** never use `unwrap()` or `expect()` in production code (except in tests and `config.rs`)
+- **MUST** use `?` operator for error propagation
+- **MUST** create domain-specific error enums and implement `From` trait
+- **MUST** use consistent error codes and include relevant context in error messages
+
+For detailed error handling patterns, error types, conversion patterns, and best practices, see `.cursor/rules/error-handling.mdc`.
+
+## Logging and Instrumentation
+
+For detailed logging and instrumentation patterns, see `.cursor/rules/rust-style-instrumentation.mdc`.
+
+## Visibility and Modules
+
+### Visibility Levels
+
+**MUST** use appropriate visibility modifiers:
+
+```rust
+// Public API - exposed to other crates
+pub fn public_function() {}
+
+// Crate-private - only visible within the crate
+pub(crate) fn crate_private_function() {}
+
+// Module-private - only visible within the module
+fn private_function() {}
+```
+
+**Decision guide:**
+
+- If function is called from another crate → **MUST** use `pub`
+- If function is called from another module in same crate → **MUST** use `pub(crate)`
+- If function is only used within the module → **MUST** use `fn` (private)
+
+### Module Organization
+
+**MUST** follow these module organization rules:
+
+- **MUST** keep modules focused on a single responsibility
+- **MUST** use `mod.rs` for module organization
+- **SHOULD** group related functionality together
+- **SHOULD** prefer small, focused modules over large ones
+
+## Tests
+
+For detailed testing patterns, see:
+
+- `.cursor/rules/rust-style-testing.mdc` - Testing patterns and assertions
+- `.cursor/rules/testing-unit.mdc` - Unit testing guidelines
+- `.cursor/rules/testing-e2e.mdc` - E2E testing guidelines
+
+## Code Organization
+
+### File and module layout
+
+**MUST** keep responsibilities separated by layer and module:
+
+- **MUST** keep HTTP concerns in `crates/keydock-http/` (routing, DTOs, OpenAPI, HTTP mapping)
+- **MUST** keep orchestration in `crates/keydock-usecase/` (use cases + ports)
+- **MUST** keep business rules and invariants in `crates/keydock-domain/` (pure validation)
+- **MUST** keep adapters/IO in `crates/keydock-fjall/` (storage implementation)
+
+**MUST** keep modules cohesive and small:
+
+- **MUST** split “god” modules into submodules when files get large or cover multiple responsibilities
+- **MUST** expose a small public surface; prefer `pub(crate)` by default and promote to `pub` only when required cross-crate
+- **SHOULD** use `mod.rs` as the module boundary to organize submodules and re-exports (`pub use ...`) for a clean API
+
+### Ordering within a Rust file
+
+**MUST** follow this top-to-bottom order (high-level to low-level):
+
+1. Module docs (only if needed) and `mod` declarations (when applicable)
+2. Imports (follow `.cursor/rules/rust-style-imports.mdc`)
+3. Type aliases and constants (`const`/`static`) used by the module
+4. Public types (`struct`/`enum`) and their constructors/builders
+5. `impl` blocks:
+   - Inherent `impl Type` first
+   - Then `impl Trait for Type`
+6. Public functions (API) first, then private helpers (`fn`)
+7. `#[cfg(test)] mod tests { ... }` at the bottom
+
+**SHOULD** keep “happy path” logic near the top of a function and push details into small helpers.
+
+### Function Design
+
+**MUST** follow these function design rules:
+
+- **MUST** keep functions small and focused (single responsibility)
+- **MUST** use meaningful variable names that express intent
+- **SHOULD** add comments for complex logic or non-obvious decisions
+- **SHOULD** group related functionality in modules
+- **SHOULD** use early returns for validation logic
+- **SHOULD** extract complex conditions into helper methods
+
+## Development Workflow
+
+**MUST** use Cargo commands (this repo does not use `justfile`):
+
+```bash
+cargo fmt --all
+cargo clippy --workspace --all-targets
+cargo test --workspace
+cargo build --workspace
+```
+
+## Domain / Use Case Patterns
+
+### Validation (early returns)
+
+**SHOULD** validate early and return typed domain errors:
+
+```rust
+use keydock_domain::DomainError;
+
+pub fn validate_key_len(key: &str, max: usize) -> Result<(), DomainError> {
+    if key.len() > max {
+        return Err(DomainError::KeyTooLong { max, got: key.len() });
+    }
+    Ok(())
+}
+```
+
+### Prefer `match` for enums with multiple branches
+
+**SHOULD** use `match` for clear exhaustive handling:
+
+```rust
+match err {
+    keydock_usecase::UseCaseError::NotImplemented => {
+        // map to 501 at the HTTP boundary
+    }
+    keydock_usecase::UseCaseError::Domain(domain) => {
+        // map to 400 at the HTTP boundary
+        let _msg = domain.to_string();
+    }
+}
+```
+
+## Constants and Configuration
+
+**SHOULD** use constants for magic numbers and configuration structs for runtime values:
+
+```rust
+// Constants for magic numbers
+const MAX_RETRY_COUNT: usize = 3;
+const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+// Configuration structs for runtime values
+#[derive(Debug, Clone)]
+pub struct ScraperConfig {
+    pub timeout_secs: u64,
+    pub max_retries: usize,
+}
+
+impl Default for ScraperConfig {
+    fn default() -> Self {
+        Self { timeout_secs: 30, max_retries: 3 }
+    }
+}
+```
+
+## Best Practices Summary
+
+**MUST** follow these mandatory practices:
+
+1. **Formatting**: **MUST** always run `cargo fmt --all` before committing
+2. **Linting**: **MUST** fix all clippy warnings with `cargo clippy --workspace --all-targets`
+3. **Documentation**: **SHOULD** document public APIs with `///` when non-obvious
+4. **Error Handling**: **MUST** follow `.cursor/rules/error-handling.mdc` for comprehensive error handling guidelines
+5. **Logging**: **MUST** use structured logging (see `.cursor/rules/rust-style-instrumentation.mdc`)
+6. **Testing**: **MUST** use `pretty_assertions` and `rstest` (see `.cursor/rules/rust-style-testing.mdc`)
+7. **Visibility**: **MUST** use appropriate visibility modifiers (`pub`, `pub(crate)`, private)
+8. **Naming**: **MUST** follow Rust naming conventions (see `.cursor/rules/rust-style-imports.mdc`)
+9. **Imports**: **MUST** organize imports properly (see `.cursor/rules/rust-style-imports.mdc`)
+10. **Instrumentation**: **MUST** instrument public functions (see `.cursor/rules/rust-style-instrumentation.mdc`)

@@ -1,0 +1,36 @@
+# Example Keydock configuration. Copy to `keydock.toml` (or mount as `/etc/keydock/keydock.toml`
+# in Docker) and adjust secrets and paths before production use.
+
+[http]
+# Bind address. Use `0.0.0.0:8080` in containers so the port is reachable from the host.
+listen = "0.0.0.0:8080"
+# Optional dedicated listener for Prometheus scrape (when set, `/metrics` is served on this address instead of the main listener).
+# metrics_listen = "127.0.0.1:9090"
+
+[paths]
+# Embedded database directory (must be writable).
+data_dir = "/var/lib/keydock/data"
+
+# When true, emit JSON logs (structured) instead of plain text.
+log_json = false
+
+# Root secret for HMAC of API credentials. Choose ONE of these forms:
+#
+#   Inline string (written by `keydock init` for local instances):
+# root_key = "secret-from-keydock-init"
+#
+#   Explicit table forms (env/file are resolved at startup):
+# root_key = { value = "secret-from-keydock-init" }
+# root_key = { env = "PLATFORM_SECRET_VAR" }
+# root_key = { file = "/run/secrets/keydock_root_key" }
+#
+# For Docker/Compose: set the KEYDOCK_ROOT_KEY environment variable instead — no TOML entry needed.
+
+[gc]
+# Seconds between sweeps of expired keys in the data keyspace.
+interval_secs = 60
+
+[rate_limit]
+# Fixed-window limit per client IP (see HTTP middleware). Disabled by default.
+enabled = false
+requests_per_hour = 1000

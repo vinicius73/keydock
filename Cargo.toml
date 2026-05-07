@@ -1,0 +1,96 @@
+[workspace]
+resolver = "3"
+members = [
+    "apps/keydock",
+    "crates/keydock-config",
+    "crates/keydock-domain",
+    "crates/keydock-fjall",
+    "crates/keydock-http",
+    "crates/keydock-state",
+    "crates/keydock-support",
+    "crates/keydock-testkit",
+    "crates/keydock-usecase",
+]
+
+[workspace.package]
+version = "0.1.0-alpha"
+edition = "2024"
+license = "AGPL-3.0-only"
+rust-version = "1.90"
+
+[workspace.dependencies]
+anyhow = "1.0.102"
+axum = { version = "0.8.9", features = [
+    "http1",
+    "http2",
+    "form",
+    "macros",
+    "tokio",
+] }
+bytes = "1.11.1"
+fjall = "3.1.4"
+futures-util = { version = "0.3.31", default-features = false, features = ["async-await", "alloc"] }
+hmac = { version = "0.13.0", features = ["zeroize"] }
+lexopt = "0.3.2"
+metrics = "0.24.3"
+metrics-exporter-prometheus = "0.18.1"
+percent-encoding = "2.3.2"
+postcard = { version = "1.1.3", features = ["alloc"] }
+secrecy = { version = "0.10.3", features = ["serde"] }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+serde_urlencoded = "0.7.1"
+sha2 = "0.11.0"
+subtle = "2.6.1"
+base64 = "0.22.1"
+uuid = { version = "1.23.0", features = ["v4"] }
+tempfile = "3.27.0"
+thiserror = "2.0.18"
+time = { version = "0.3.47", features = [
+    "serde",
+    "macros",
+    "formatting",
+    "parsing",
+] }
+tokio = { version = "1.52.0", features = [
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "io-util",
+    "fs",
+    "time",
+    "signal",
+    "net",
+] }
+tokio-util = { version = "0.7.18", default-features = false, features = ["rt"] }
+toml = "1.1.2"
+tower = { version = "0.5.3", features = ["util"] }
+tower-http = { version = "0.6.8", features = [
+    "compression-gzip",
+    "cors",
+    "request-id",
+    "timeout",
+    "trace",
+    "normalize-path",
+] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+utoipa = { version = "5.4.0", features = ["axum_extras", "time"] }
+utoipa-swagger-ui = { version = "9.0.2", features = ["axum", "vendored"] }
+http-body-util = "0.1.3"
+
+# Internal crates (path dependencies; versions follow workspace.package)
+keydock-config = { path = "crates/keydock-config" }
+keydock-domain = { path = "crates/keydock-domain" }
+keydock-fjall = { path = "crates/keydock-fjall" }
+keydock-http = { path = "crates/keydock-http" }
+keydock-state = { path = "crates/keydock-state" }
+keydock-support = { path = "crates/keydock-support" }
+keydock-testkit = { path = "crates/keydock-testkit" }
+keydock-usecase = { path = "crates/keydock-usecase" }
+
+# Dev / test
+pretty_assertions = "1.4.1"
+axum-test = { version = "20.0.0", features = ["pretty-assertions"] }
+rstest = "0.26.1"
+serial_test = "3.2.0"

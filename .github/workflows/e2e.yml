@@ -1,0 +1,80 @@
+name: E2E (Playwright)
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifacts:
+        description: Collect screenshots and videos on failure
+        type: boolean
+        default: true
+      log_level:
+        description: Log level for the keydock server (RUST_LOG)
+        type: string
+        default: info
+
+# Always cancel previous runs on re-dispatch to avoid wasting runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      actions: write # required by upload-artifact
+    env:
+      RUST_LOG: ${{ inputs.log_level }}
+      KEYDOCK_BIN: ${{ github.workspace }}/target/release/keydock
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: ./.github/actions/rust-setup
+
+      - name: cargo build (release)
+        run: cargo build -p keydock --release --locked
+
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: packages/keydock-sdk
+
+      - name: Build SDK
+        working-directory: packages/keydock-sdk
+        run: bun run build
+
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: tests/e2e
+
+      - name: Install Playwright Chromium
+        working-directory: tests/e2e
+        run: bunx playwright install chromium --with-deps
+
+      - name: Run Playwright tests
+        working-directory: tests/e2e
+        env:
+          COLLECT_ARTIFACTS: ${{ inputs.artifacts }}
+        run: |
+          if [ "${COLLECT_ARTIFACTS}" = "true" ]; then
+            bun run test:artifacts
+          else
+            bun run test
+          fi
+
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: playwright-report
+          path: tests/e2e/playwright-report
+          if-no-files-found: ignore
+
+      - uses: actions/upload-artifact@v7.0.1
+        if: always()
+        with:
+          name: playwright-test-results
+          path: tests/e2e/test-results
+          if-no-files-found: ignore

@@ -1,0 +1,133 @@
+---
+title: Quick Start
+description: Run Keydock, create a bucket, write and read a key in under five minutes.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This guide gets you from zero to a working Keydock instance. You will run the server, create a bucket, write a value, and read it back.
+
+## Run with Docker
+
+The fastest way to start Keydock is with Docker. Pass a root secret via the environment variable and bind port 8080:
+
+```bash
+docker run \
+  -e KEYDOCK_ROOT_KEY=my-local-secret \
+  -p 8080:8080 \
+  ghcr.io/vinicius73/keydock:latest
+```
+
+The server is ready when you see a log line similar to (plain-text logs):
+
+```
+INFO listening address=127.0.0.1:8080
+```
+
+With JSON logging enabled (`KEYDOCK_LOG_JSON=true`), fields and formatting differ — wait until port `8080` accepts TCP connections instead.
+
+<Aside type="caution">
+`KEYDOCK_ROOT_KEY` is used to hash stored credentials at rest. Use a strong random value in production. Never reuse the same key across environments.
+</Aside>
+
+## Run from Binary
+
+If you prefer to run the binary directly:
+
+<Steps>
+
+1. Initialize an instance directory:
+
+   ```bash
+   keydock init ./instance
+   ```
+
+   This creates `./instance/keydock.toml` and `./instance/data/`.
+
+2. Start the server:
+
+   ```bash
+   keydock serve -c ./instance/keydock.toml
+   ```
+
+   The server listens on `http://127.0.0.1:8080` by default.
+
+</Steps>
+
+For full configuration options see the [README on GitHub](https://github.com/vinicius73/keydock#configuration).
+
+## Create a Bucket
+
+Buckets are created with a `POST` to `/api/v1/`. The `email` field is required as an admin label. Pass credentials you want to protect the bucket with.
+
+```bash
+curl -s -X POST http://127.0.0.1:8080/api/v1/ \
+  -H 'Content-Type: application/x-www-form-urlencoded' \
+  --data-urlencode 'email=owner@example.com' \
+  --data-urlencode 'secret_key=admin-secret' \
+  --data-urlencode 'read_key=read-secret' \
+  --data-urlencode 'write_key=write-secret'
+```
+
+The response body is the new bucket ID as plain text:
+
+```
+3f2a1b4c-8e9d-4f7a-b2c1-0d5e6f3a7b8c
+```
+
+Save this ID — you will need it for all subsequent requests.
+
+```bash
+BUCKET=3f2a1b4c-8e9d-4f7a-b2c1-0d5e6f3a7b8c
+```
+
+## Write a Key
+
+Write a JSON value to the key `user:42`:
+
+```bash
+curl -s -X PUT "http://127.0.0.1:8080/api/v1/$BUCKET/user:42" \
+  -H 'Authorization: Bearer write-secret' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Ana","role":"admin"}'
+```
+
+The stored value is echoed in the response:
+
+```json
+{"name":"Ana","role":"admin"}
+```
+
+Write a plain text value with a 60-second TTL:
+
+```bash
+curl -s -X PUT "http://127.0.0.1:8080/api/v1/$BUCKET/greeting?ttl=60" \
+  -H 'Authorization: Bearer write-secret' \
+  -H 'Content-Type: text/plain' \
+  -d 'hello'
+```
+
+## Read a Key
+
+```bash
+curl -s "http://127.0.0.1:8080/api/v1/$BUCKET/user:42" \
+  -H 'Authorization: Bearer read-secret'
+```
+
+Response:
+
+```json
+{"name":"Ana","role":"admin"}
+```
+
+Reading a key that does not exist or has expired returns `404`:
+
+```json
+{"error":{"code":404,"message":"not_found"}}
+```
+
+## Next Steps
+
+- [HTTP API Reference](/reference/http-api/) — all endpoints, authentication, counters, transactions, and tokens
+- [TypeScript SDK](/reference/sdk/) — install `keydock-sdk` and use the typed client
+- [GitHub README](https://github.com/vinicius73/keydock) — full configuration reference, Docker Compose, and environment variables

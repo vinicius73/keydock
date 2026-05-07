@@ -1,0 +1,37 @@
+name: CI (Site)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - site/**
+  pull_request:
+    branches: [master]
+    paths:
+      - site/**
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: site
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: site
+
+      - name: Build
+        run: bun run build

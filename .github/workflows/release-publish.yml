@@ -1,0 +1,276 @@
+name: Release (publish)
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+*"
+
+concurrency:
+  group: release-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  validate-tag:
+    name: Validate tag matches manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - id: check
+        name: Verify Cargo.toml, package.json, and jsr.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#v}"
+
+          CARGO="$(grep -E '^version = ' Cargo.toml | head -n1 | sed -E 's/^version = "([^"]+)".*/\1/')"
+          SDK="$(jq -r .version packages/keydock-sdk/package.json)"
+          JSR="$(jq -r .version packages/keydock-sdk/jsr.json)"
+
+          echo "Tag (without v): ${TAG}"
+          echo "Cargo.toml workspace version: ${CARGO}"
+          echo "package.json version: ${SDK}"
+          echo "jsr.json version: ${JSR}"
+
+          if [ "${TAG}" != "${CARGO}" ] || [ "${TAG}" != "${SDK}" ] || [ "${TAG}" != "${JSR}" ]; then
+            echo "::error::Version mismatch: tag v${TAG} must match Cargo.toml, package.json, and jsr.json" >&2
+            exit 1
+          fi
+
+          echo "version=${TAG}" >> "${GITHUB_OUTPUT}"
+
+  build-docker:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/keydock
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+          flavor: |
+            latest=auto
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+  build-binary:
+    name: Build static Linux binary (musl)
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: ./.github/actions/rust-setup
+
+      - name: Install musl target and toolchain support
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends musl-tools
+          rustup target add x86_64-unknown-linux-musl
+
+      - name: Build release binary
+        run: |
+          cargo build --release --locked -p keydock --target x86_64-unknown-linux-musl
+
+      - name: Package binary and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp target/x86_64-unknown-linux-musl/release/keydock keydock-linux-amd64
+          sha256sum keydock-linux-amd64 > keydock-linux-amd64.sha256
+
+      - name: Generate build provenance attestation
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: keydock-linux-amd64
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: binary
+          path: |
+            keydock-linux-amd64
+            keydock-linux-amd64.sha256
+
+  build-sdk:
+    name: Build SDK
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: packages/keydock-sdk
+
+      - name: Build distributable
+        working-directory: packages/keydock-sdk
+        run: bun run build
+
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: sdk-dist
+          path: packages/keydock-sdk/dist
+
+  publish-npm:
+    name: Publish SDK to npm
+    runs-on: ubuntu-latest
+    needs: build-sdk
+    timeout-minutes: 15
+    # Trusted publishing via OIDC (no NPM_TOKEN required).
+    # The trusted publisher on npmjs.com is bound to this exact workflow filename
+    # (release-publish.yml) and the publish job below; do not rename either without
+    # updating the npm package settings, otherwise publishing will fail with ENEEDAUTH.
+    # See: https://docs.npmjs.com/trusted-publishers
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: .
+
+      # Node 24 ships with npm >= 11.5.1, which is required for OIDC trusted publishing.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      # No NODE_AUTH_TOKEN: the npm CLI detects the OIDC environment automatically
+      # and exchanges the workflow's id-token for a short-lived publish token.
+      # No --provenance flag: npm auto-generates and publishes the attestation when
+      # publishing from a public repo via trusted publishing.
+      - name: Publish to npm (OIDC)
+        working-directory: packages/keydock-sdk
+        run: npm publish --access public
+
+  publish-ghp:
+    name: Publish SDK to GitHub Packages
+    runs-on: ubuntu-latest
+    needs: build-sdk
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: sdk-dist
+          path: .
+
+      - name: Scope package for GitHub Packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq '.name = "@vinicius73/keydock-sdk" |
+            .publishConfig = {"registry": "https://npm.pkg.github.com"}' \
+            packages/keydock-sdk/package.json > /tmp/pkg-ghp.json
+          mv /tmp/pkg-ghp.json packages/keydock-sdk/package.json
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          registry-url: https://npm.pkg.github.com
+          scope: "@vinicius73"
+
+      - name: Publish to GitHub Packages
+        working-directory: packages/keydock-sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish --access public
+
+  publish-jsr:
+    name: Publish SDK to JSR
+    runs-on: ubuntu-latest
+    needs: validate-tag
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: ./.github/actions/bun-setup
+        with:
+          working-directory: packages/keydock-sdk
+
+      - name: Publish to JSR
+        working-directory: packages/keydock-sdk
+        run: bunx jsr publish
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs:
+      - validate-tag
+      - build-docker
+      - build-binary
+      - publish-npm
+      - publish-ghp
+      - publish-jsr
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: binary
+          path: release-assets
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release-assets/keydock-linux-amd64
+            release-assets/keydock-linux-amd64.sha256
