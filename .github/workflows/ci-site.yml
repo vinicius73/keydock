@@ -24,14 +24,20 @@ defaults:
 
 jobs:
   build:
+    name: Site (Astro)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: site/package.json
+
       - uses: ./.github/actions/bun-setup
         with:
           working-directory: site
+          bun-version: "1.3.x"
 
       - name: Build
         run: bun run build
