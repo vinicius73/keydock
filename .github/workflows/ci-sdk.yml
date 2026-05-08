@@ -54,3 +54,11 @@ jobs:
 
       - name: Test
         run: bun test
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          ref="${{ inputs.ref || github.ref_name }}"
+          if [[ "${{ job.status }}" == "success" ]]; then icon="✅"; else icon="❌"; fi
+          printf "## %s SDK QA\n**ref:** \`%s\`\n" "${icon}" "${ref}" >> "${GITHUB_STEP_SUMMARY}"

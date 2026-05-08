@@ -44,3 +44,10 @@ jobs:
 
       - name: Build
         run: bun run build
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ job.status }}" == "success" ]]; then icon="✅"; else icon="❌"; fi
+          printf "## %s Site build\n**ref:** \`%s\`\n" "${icon}" "${{ github.ref_name }}" >> "${GITHUB_STEP_SUMMARY}"

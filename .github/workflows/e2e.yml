@@ -77,3 +77,14 @@ jobs:
           name: playwright-test-results
           path: tests/e2e/test-results
           if-no-files-found: ignore
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ "${{ job.status }}" == "success" ]]; then icon="✅"; else icon="❌"; fi
+          run_url="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          {
+            printf "## %s E2E (Playwright)\n" "${icon}"
+            printf "**ref:** \`%s\` | [artifacts](%s)\n" "${{ github.ref_name }}" "${run_url}"
+          } >> "${GITHUB_STEP_SUMMARY}"

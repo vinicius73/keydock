@@ -155,11 +155,19 @@ jobs:
 
           if [[ -n "${existing}" ]]; then
             echo "PR already exists: ${existing}"
+            pr_url="${existing}"
           else
-            gh pr create \
+            pr_url="$(gh pr create \
               --repo "${{ github.repository }}" \
               --base master \
               --head "release/v${VERSION}" \
               --title "chore(release): bump version to ${VERSION}" \
-              --body-file "${body_file}"
+              --body-file "${body_file}")"
           fi
+
+          {
+            printf "## Release v%s prepared\n\n" "${VERSION}"
+            printf "| | |\n|---|---|\n"
+            printf "| Branch | \`release/v%s\` |\n" "${VERSION}"
+            printf "| Pull Request | %s |\n" "${pr_url}"
+          } >> "${GITHUB_STEP_SUMMARY}"

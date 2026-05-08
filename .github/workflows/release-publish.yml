@@ -276,3 +276,16 @@ jobs:
           files: |
             release-assets/keydock-linux-amd64
             release-assets/keydock-linux-amd64.sha256
+
+      - name: Summary
+        shell: bash
+        run: |
+          version="${{ needs.validate-tag.outputs.version }}"
+          repo="${{ github.repository }}"
+          owner="${{ github.repository_owner }}"
+          {
+            printf "## 🎉 v%s released\n\n" "${version}"
+            printf "| | |\n|---|---|\n"
+            printf "| GitHub Release | https://github.com/%s/releases/tag/v%s |\n" "${repo}" "${version}"
+            printf "| Docker | \`ghcr.io/%s/keydock:%s\` |\n" "${owner}" "${version}"
+          } >> "${GITHUB_STEP_SUMMARY}"
