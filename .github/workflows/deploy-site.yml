@@ -36,16 +36,35 @@ jobs:
           working-directory: site
           bun-version: "1.3.x"
 
-      # configure-pages v6 does not patch Astro config; pass URL metadata via the CLI.
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v6
 
-      - name: Build with Astro
+      # Astro expects site + base in config for project Pages ("/repo"). If the Pages API
+      # returns an empty base_path, fall back to /REPO (skip for *.github.io root sites).
+      - name: Astro URL for GitHub Pages
+        id: astro_pages
+        shell: bash
+        env:
+          BASE_PATH: ${{ steps.pages.outputs.base_path }}
+          REPO_NAME: ${{ github.event.repository.name }}
         run: |
-          bun run astro build \
-            --site "${{ steps.pages.outputs.origin }}" \
-            --base "${{ steps.pages.outputs.base_path }}"
+          set -euo pipefail
+          site="${{ steps.pages.outputs.origin }}"
+          base="${BASE_PATH}"
+          if [[ -z "${base}" && "${REPO_NAME}" != *.github.io ]]; then
+            base="/${REPO_NAME}"
+          fi
+          echo "site=${site}" >> "${GITHUB_OUTPUT}"
+          if [[ -n "${base}" ]]; then
+            echo "base=${base}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Build with Astro
+        run: bun run build
+        env:
+          ASTRO_SITE: ${{ steps.astro_pages.outputs.site }}
+          ASTRO_BASE: ${{ steps.astro_pages.outputs.base }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
