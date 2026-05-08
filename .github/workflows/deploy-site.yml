@@ -16,13 +16,12 @@ concurrency:
   group: pages-${{ github.repository }}
   cancel-in-progress: false
 
-defaults:
-  run:
-    working-directory: site
-
 jobs:
   build:
     name: Build static site
+    defaults:
+      run:
+        working-directory: site
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
