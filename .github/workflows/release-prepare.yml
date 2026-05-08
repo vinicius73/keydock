@@ -1,5 +1,7 @@
 name: Release (prepare)
 
+run-name: Release (prepare v${{ inputs.version }})
+
 on:
   workflow_dispatch:
     inputs:

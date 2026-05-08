@@ -1,5 +1,7 @@
 name: Release (publish)
 
+run-name: Release (publish ${{ github.ref_name }})
+
 on:
   push:
     tags:
