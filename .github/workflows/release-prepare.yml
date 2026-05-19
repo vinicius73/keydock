@@ -176,10 +176,21 @@ jobs:
           Create and push the tag from \`master\`:
 
           \`\`\`bash
+          git fetch origin
           git checkout master
-          git pull
-          git tag v${VERSION}
-          git push origin v${VERSION}
+          git pull --ff-only origin master
+
+          # Manifest versions must match ${VERSION} (no leading "v" in files)
+          grep '^version = ' Cargo.toml
+          jq -r .version packages/keydock-sdk/package.json packages/keydock-sdk/jsr.json
+
+          # Abort if the tag already exists (commands below should print nothing)
+          git tag -l "v${VERSION}"
+          git ls-remote --tags origin "refs/tags/v${VERSION}"
+
+          git tag -a "v${VERSION}" -m "Release v${VERSION}"
+          git show "v${VERSION}"
+          git push origin "refs/tags/v${VERSION}"
           \`\`\`
           EOF
 
