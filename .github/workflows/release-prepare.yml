@@ -15,8 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 env:
   VERSION: ${{ inputs.version }}
@@ -25,6 +24,8 @@ jobs:
   prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write
     steps:
       - name: Validate semver
         shell: bash
@@ -37,7 +38,7 @@ jobs:
           fi
           echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: master
           fetch-depth: 1
@@ -81,8 +82,6 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           branch="release/v${VERSION}"
 
@@ -92,7 +91,14 @@ jobs:
             packages/keydock-sdk/package.json \
             packages/keydock-sdk/jsr.json
 
-          git commit -m "chore(release): bump version to ${VERSION}"
+          # Idempotency: if the workflow is re-run for the same version (e.g. after a
+          # transient CI failure unrelated to the version bump), the sed commands above
+          # produce no diff. Skip the commit rather than failing with "nothing to commit".
+          if git diff --cached --quiet; then
+            echo "No changes staged; version already bumped to ${VERSION} on this branch."
+          else
+            git commit -m "chore(release): bump version to ${VERSION}"
+          fi
 
           # Re-run safety: only overwrite if nobody else pushed to the branch since our check.
           remote_sha="$(git ls-remote --heads origin "${branch}" | awk 'NR == 1 { print $1; exit }')"
@@ -121,6 +127,9 @@ jobs:
     needs: [ci-rust, ci-sdk]
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - name: Open pull request
         shell: bash

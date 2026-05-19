@@ -8,7 +8,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+*"
 
 concurrency:
-  group: release-publish
+  group: release-publish-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -27,7 +27,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       npm_dist_tag: ${{ steps.check.outputs.npm_dist_tag }}
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - id: check
         name: Verify Cargo.toml, package.json, and jsr.json
@@ -79,18 +79,18 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4
 
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf # v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/keydock
           tags: |
@@ -100,7 +100,7 @@ jobs:
           flavor: |
             latest=auto
 
-      - uses: docker/build-push-action@v7
+      - uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7
         with:
           context: .
           push: true
@@ -122,7 +122,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - uses: ./.github/actions/rust-setup
 
@@ -146,13 +146,14 @@ jobs:
           sha256sum keydock-linux-amd64 > keydock-linux-amd64.sha256
 
       - name: Generate build provenance attestation
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4
         with:
           subject-path: keydock-linux-amd64
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: binary
+          retention-days: 1
           path: |
             keydock-linux-amd64
             keydock-linux-amd64.sha256
@@ -162,8 +163,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: validate-tag
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - uses: ./.github/actions/bun-setup
         with:
@@ -173,9 +176,10 @@ jobs:
         working-directory: packages/keydock-sdk
         run: bun run build
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: sdk-dist
+          retention-days: 1
           path: packages/keydock-sdk/dist
 
   publish-npm:
@@ -194,15 +198,15 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: sdk-dist
-          path: .
+          path: packages/keydock-sdk/dist
 
       # Node 24 ships with npm >= 11.5.1, which is required for OIDC trusted publishing.
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
@@ -228,12 +232,12 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: sdk-dist
-          path: .
+          path: packages/keydock-sdk/dist
 
       - name: Scope package for GitHub Packages
         shell: bash
@@ -244,7 +248,7 @@ jobs:
             packages/keydock-sdk/package.json > /tmp/pkg-ghp.json
           mv /tmp/pkg-ghp.json packages/keydock-sdk/package.json
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "22"
           registry-url: https://npm.pkg.github.com
@@ -260,13 +264,15 @@ jobs:
   publish-jsr:
     name: Publish SDK to JSR
     runs-on: ubuntu-latest
-    needs: validate-tag
+    needs:
+      - build-sdk
+      - validate-tag
     timeout-minutes: 15
     permissions:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - uses: ./.github/actions/bun-setup
         with:
@@ -290,7 +296,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: binary
           path: release-assets
@@ -310,16 +316,31 @@ jobs:
             pre_flag="--prerelease"
           fi
 
-          # Atomic: creates the release and uploads assets in a single operation,
-          # avoiding the draft→finalize race that causes "immutable release" errors.
-          # shellcheck disable=SC2086
-          gh release create "${TAG}" \
-            --repo "${{ github.repository }}" \
-            --generate-notes \
-            --verify-tag \
-            ${pre_flag} \
-            release-assets/keydock-linux-amd64 \
+          assets=(
+            release-assets/keydock-linux-amd64
             release-assets/keydock-linux-amd64.sha256
+          )
+
+          if gh release view "${TAG}" --repo "${{ github.repository }}" &>/dev/null; then
+            # Idempotency: release already exists (e.g. re-run after a downstream failure).
+            # Upload assets with --clobber so partial uploads from the previous run are
+            # overwritten cleanly rather than leaving the release in an inconsistent state.
+            echo "Release ${TAG} already exists; uploading/replacing assets."
+            gh release upload "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --clobber \
+              "${assets[@]}"
+          else
+            # Atomic: creates the release and uploads assets in a single operation,
+            # avoiding the draft→finalize race that caused "immutable release" errors.
+            # shellcheck disable=SC2086
+            gh release create "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --generate-notes \
+              --verify-tag \
+              ${pre_flag} \
+              "${assets[@]}"
+          fi
 
       - name: Summary
         shell: bash
