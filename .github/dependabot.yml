@@ -1,5 +1,19 @@
 version: 2
+
+# Dependabot keeps all pinned SHAs and package versions up to date.
+#
+# Grouping strategy:
+#   - patch + minor updates are batched into a single PR per ecosystem (low risk).
+#   - major updates are intentionally left ungrouped so each gets its own PR
+#     and can be reviewed individually before merging.
+#
+# Commit message format follows the project's conventional-commits convention.
+
 updates:
+  # ── GitHub Actions — root workflows ────────────────────────────────────────
+  #
+  # Dependabot understands SHA-pinned actions (e.g. uses: actions/checkout@<sha> # v4)
+  # and will update both the SHA and the version comment automatically.
   - package-ecosystem: github-actions
     directory: /
     schedule:
@@ -7,11 +21,19 @@ updates:
       day: monday
       time: "09:00"
       timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
     groups:
-      github-actions:
+      github-actions-patch-minor:
+        update-types: ["patch", "minor"]
         patterns: ["*"]
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github_actions"
 
+  # ── GitHub Actions — composite action: rust-setup ──────────────────────────
+  #
   # Separate entry required: Dependabot does not follow local action references
   # and will not scan .github/actions/ from the root entry above.
   - package-ecosystem: github-actions
@@ -21,11 +43,18 @@ updates:
       day: monday
       time: "09:00"
       timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
     groups:
-      github-actions:
+      github-actions-patch-minor:
+        update-types: ["patch", "minor"]
         patterns: ["*"]
     open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github_actions"
 
+  # ── GitHub Actions — composite action: bun-setup ───────────────────────────
   - package-ecosystem: github-actions
     directory: /.github/actions/bun-setup
     schedule:
@@ -33,7 +62,78 @@ updates:
       day: monday
       time: "09:00"
       timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
     groups:
-      github-actions:
+      github-actions-patch-minor:
+        update-types: ["patch", "minor"]
         patterns: ["*"]
     open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "github_actions"
+
+  # ── Cargo (Rust workspace) ──────────────────────────────────────────────────
+  #
+  # Only direct dependencies are updated. Transitive dependency updates are
+  # picked up naturally when their parents are bumped, avoiding noise from
+  # hundreds of indirect-dep PRs in a large workspace.
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
+    allow:
+      - dependency-type: direct
+    groups:
+      cargo-patch:
+        update-types: ["patch"]
+        patterns: ["*"]
+      cargo-minor:
+        update-types: ["minor"]
+        patterns: ["*"]
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "rust"
+
+  # ── npm (keydock-sdk) ───────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /packages/keydock-sdk
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-patch:
+        update-types: ["patch"]
+        patterns: ["*"]
+      npm-minor:
+        update-types: ["minor"]
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "sdk"
+
+  # ── Docker ──────────────────────────────────────────────────────────────────
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
