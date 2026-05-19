@@ -1,6 +1,7 @@
 name: Release (prepare)
 
-run-name: Release (prepare v${{ inputs.version }})
+run-name: >-
+  Release (prepare v${{ inputs.version }}${{ inputs.skip_ci && ' — skip CI' || '' }})
 
 on:
   workflow_dispatch:
@@ -9,6 +10,11 @@ on:
         description: 'Release version (semver, e.g. 0.3.0 or 1.0.0-rc.1)'
         required: true
         type: string
+      skip_ci:
+        description: 'Skip Rust and SDK CI before opening the release PR'
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: release-prepare
@@ -111,20 +117,33 @@ jobs:
           fi
 
   ci-rust:
+    if: ${{ inputs.skip_ci != true }}
     needs: prepare
     uses: ./.github/workflows/ci-rust.yml
     with:
       ref: release/v${{ inputs.version }}
 
   ci-sdk:
+    if: ${{ inputs.skip_ci != true }}
     needs: prepare
     uses: ./.github/workflows/ci-sdk.yml
     with:
       ref: release/v${{ inputs.version }}
 
-  # github.token PRs do not trigger pull_request workflows; CI already ran above via workflow_call.
+  # github.token PRs do not trigger pull_request workflows; CI runs above via workflow_call when skip_ci is false.
+  # always() is required so open-pr is evaluated when ci-* jobs are skipped; !cancelled() avoids opening a PR on cancel.
   open-pr:
-    needs: [ci-rust, ci-sdk]
+    needs: [prepare, ci-rust, ci-sdk]
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.prepare.result == 'success' &&
+      (
+        (inputs.skip_ci == true &&
+          needs.ci-rust.result == 'skipped' &&
+          needs.ci-sdk.result == 'skipped') ||
+        (needs.ci-rust.result == 'success' && needs.ci-sdk.result == 'success')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
@@ -135,13 +154,19 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          SKIP_CI: ${{ inputs.skip_ci }}
         run: |
           set -euo pipefail
           body_file=$(mktemp)
+          if [[ "${SKIP_CI}" == "true" ]]; then
+            ci_note="CI was **skipped** for this prepare run; verify the release branch before merging."
+          else
+            ci_note="CI (Rust and SDK) passed on the release branch before this PR was opened."
+          fi
           cat > "${body_file}" << EOF
           Automated version bump for **v${VERSION}**.
 
-          CI (Rust and SDK) passed on the release branch before this PR was opened.
+          ${ci_note}
 
           ### Checklist
           - [ ] Changelog / release notes reviewed
@@ -177,9 +202,16 @@ jobs:
               --body-file "${body_file}")"
           fi
 
+          if [[ "${SKIP_CI}" == "true" ]]; then
+            ci_status="skipped"
+          else
+            ci_status="passed (Rust + SDK)"
+          fi
+
           {
             printf "## Release v%s prepared\n\n" "${VERSION}"
             printf "| | |\n|---|---|\n"
             printf "| Branch | \`release/v%s\` |\n" "${VERSION}"
+            printf "| CI | %s |\n" "${ci_status}"
             printf "| Pull Request | %s |\n" "${pr_url}"
           } >> "${GITHUB_STEP_SUMMARY}"
