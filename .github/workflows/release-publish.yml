@@ -302,12 +302,89 @@ jobs:
           name: binary
           path: release-assets
 
+      - name: Build release notes
+        id: notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+          TAG: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          CHECKSUM="$(awk '{print $1}' release-assets/keydock-linux-amd64.sha256)"
+
+          MAJOR="${VERSION%%.*}"
+          MINOR_PATCH="${VERSION#*.}"
+          MINOR="${MINOR_PATCH%%.*}"
+
+          if [[ "${VERSION}" == *-* ]]; then
+            DOCKER_TAGS="\`${VERSION}\`"
+          else
+            DOCKER_TAGS="\`${VERSION}\`, \`${MAJOR}.${MINOR}\`, \`${MAJOR}\`, \`latest\`"
+          fi
+
+          # Fetch auto-generated changelog from the GitHub API.
+          # Falls back to empty on the first-ever release (no previous tag to diff against)
+          # or on transient API errors. Stderr is intentionally left visible in the job log.
+          AUTO_NOTES=""
+          if ! AUTO_NOTES="$(gh api "repos/${REPO}/releases/generate-notes" \
+            --method POST \
+            --field tag_name="${TAG}" \
+            --jq '.body')"; then
+            echo "Warning: could not fetch auto-generated changelog; release notes will omit it."
+          fi
+
+          NOTES_FILE="$(mktemp --suffix=.md)"
+
+          {
+            printf "## Published Packages\n\n"
+
+            printf "### Docker\n\n"
+            printf '```sh\n'
+            printf "docker pull ghcr.io/%s/keydock:%s\n" "${OWNER}" "${VERSION}"
+            printf '```\n\n'
+            printf "**Available tags:** %s\n\n" "${DOCKER_TAGS}"
+
+            printf "### JavaScript SDK\n\n"
+            printf "| Registry | Package | Install |\n"
+            printf "|----------|---------|----------|\n"
+            printf "| npm | [\`keydock-sdk\`](https://www.npmjs.com/package/keydock-sdk/v/%s) | \`npm install keydock-sdk@%s\` |\n" \
+              "${VERSION}" "${VERSION}"
+            printf "| GitHub Packages | [\`@vinicius73/keydock-sdk\`](https://github.com/%s/pkgs/npm/keydock-sdk) | \`npm install @vinicius73/keydock-sdk@%s\` |\n" \
+              "${REPO}" "${VERSION}"
+            printf "| JSR | [\`@keydock/sdk\`](https://jsr.io/@keydock/sdk@%s) | \`npx jsr add @keydock/sdk@%s\` |\n" \
+              "${VERSION}" "${VERSION}"
+
+            printf "\n### Linux Binary (x86\\_64, static musl)\n\n"
+            printf "| File | SHA-256 |\n"
+            printf "|------|---------|\n"
+            printf "| \`keydock-linux-amd64\` | \`%s\` |\n" "${CHECKSUM}"
+            printf "\n**Verify integrity:**\n\n"
+            printf '```sh\n'
+            printf "sha256sum -c keydock-linux-amd64.sha256\n"
+            printf '```\n'
+
+            if [[ -n "${AUTO_NOTES}" ]]; then
+              printf "\n---\n\n"
+              # Single-quoted format string prevents % characters in the changelog
+              # (e.g. "100% done") from being interpreted as printf format specifiers.
+              printf '%s\n' "${AUTO_NOTES}"
+            fi
+          } > "${NOTES_FILE}"
+
+          echo "notes_file=${NOTES_FILE}" >> "${GITHUB_OUTPUT}"
+          echo "checksum=${CHECKSUM}" >> "${GITHUB_OUTPUT}"
+
       - name: Create GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.validate-tag.outputs.version }}
           TAG: ${{ github.ref_name }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
         run: |
           set -euo pipefail
 
@@ -324,9 +401,11 @@ jobs:
 
           if gh release view "${TAG}" --repo "${{ github.repository }}" &>/dev/null; then
             # Idempotency: release already exists (e.g. re-run after a downstream failure).
-            # Upload assets with --clobber so partial uploads from the previous run are
-            # overwritten cleanly rather than leaving the release in an inconsistent state.
-            echo "Release ${TAG} already exists; uploading/replacing assets."
+            # Update notes and re-upload assets so a partial previous run is left consistent.
+            echo "Release ${TAG} already exists; updating notes and re-uploading assets."
+            gh release edit "${TAG}" \
+              --repo "${{ github.repository }}" \
+              --notes-file "${NOTES_FILE}"
             gh release upload "${TAG}" \
               --repo "${{ github.repository }}" \
               --clobber \
@@ -337,7 +416,7 @@ jobs:
             # shellcheck disable=SC2086
             gh release create "${TAG}" \
               --repo "${{ github.repository }}" \
-              --generate-notes \
+              --notes-file "${NOTES_FILE}" \
               --verify-tag \
               ${pre_flag} \
               "${assets[@]}"
@@ -345,17 +424,53 @@ jobs:
 
       - name: Summary
         shell: bash
+        env:
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.repository }}
+          NPM_TAG: ${{ needs.validate-tag.outputs.npm_dist_tag }}
+          CHECKSUM: ${{ steps.notes.outputs.checksum }}
         run: |
-          version="${{ needs.validate-tag.outputs.version }}"
-          repo="${{ github.repository }}"
-          owner="${{ github.repository_owner }}"
-          npm_tag="${{ needs.validate-tag.outputs.npm_dist_tag }}"
+          set -euo pipefail
+
+          MAJOR="${VERSION%%.*}"
+          MINOR_PATCH="${VERSION#*.}"
+          MINOR="${MINOR_PATCH%%.*}"
+
           {
-            printf "## 🎉 v%s released\n\n" "${version}"
-            printf "| | |\n|---|---|\n"
-            printf "| GitHub Release | https://github.com/%s/releases/tag/v%s |\n" "${repo}" "${version}"
-            printf "| Docker | \`ghcr.io/%s/keydock:%s\` |\n" "${owner}" "${version}"
-            if [ -n "${npm_tag}" ]; then
-              printf "| npm dist-tag | \`%s\` (install with \`npm i keydock-sdk@%s\`) |\n" "${npm_tag}" "${npm_tag}"
+            printf "## Released v%s\n\n" "${VERSION}"
+
+            printf "### Docker\n\n"
+            printf "| Tag | Pull command |\n"
+            printf "|-----|-------------|\n"
+            if [[ "${VERSION}" == *-* ]]; then
+              printf "| \`%s\` | \`docker pull ghcr.io/%s/keydock:%s\` |\n" \
+                "${VERSION}" "${OWNER}" "${VERSION}"
+            else
+              for tag in "${VERSION}" "${MAJOR}.${MINOR}" "${MAJOR}" "latest"; do
+                printf "| \`%s\` | \`docker pull ghcr.io/%s/keydock:%s\` |\n" \
+                  "${tag}" "${OWNER}" "${tag}"
+              done
             fi
+
+            printf "\n### JavaScript SDK\n\n"
+            printf "| Registry | Package | Version | Dist-tag |\n"
+            printf "|----------|---------|---------|----------|\n"
+            printf "| [npm](https://www.npmjs.com/package/keydock-sdk/v/%s) | \`keydock-sdk\` | \`%s\` | \`%s\` |\n" \
+              "${VERSION}" "${VERSION}" "${NPM_TAG}"
+            printf "| [GitHub Packages](https://github.com/%s/pkgs/npm/keydock-sdk) | \`@vinicius73/keydock-sdk\` | \`%s\` | \`%s\` |\n" \
+              "${REPO}" "${VERSION}" "${NPM_TAG}"
+            printf "| [JSR](https://jsr.io/@keydock/sdk@%s) | \`@keydock/sdk\` | \`%s\` | — |\n" \
+              "${VERSION}" "${VERSION}"
+
+            printf "\n### Binary\n\n"
+            printf "| Asset | Platform | SHA-256 |\n"
+            printf "|-------|----------|---------|\n"
+            printf "| \`keydock-linux-amd64\` | Linux x86\\_64 (musl) | \`%s\` |\n" "${CHECKSUM}"
+
+            printf "\n### Links\n\n"
+            printf "| | |\n"
+            printf "|---|---|\n"
+            printf "| GitHub Release | https://github.com/%s/releases/tag/v%s |\n" "${REPO}" "${VERSION}"
+            printf "| Docker image | \`ghcr.io/%s/keydock\` |\n" "${OWNER}"
           } >> "${GITHUB_STEP_SUMMARY}"
