@@ -1278,7 +1278,7 @@ dependencies = [
 
 [[package]]
 name = "keydock"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "anyhow",
  "axum",
@@ -1308,7 +1308,7 @@ dependencies = [
 
 [[package]]
 name = "keydock-config"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "lexopt",
  "pretty_assertions",
@@ -1324,7 +1324,7 @@ dependencies = [
 
 [[package]]
 name = "keydock-domain"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "bytes",
  "pretty_assertions",
@@ -1337,7 +1337,7 @@ dependencies = [
 
 [[package]]
 name = "keydock-fjall"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "bytes",
  "fjall",
@@ -1359,7 +1359,7 @@ dependencies = [
 
 [[package]]
 name = "keydock-http"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "axum",
  "axum-governor",
@@ -1392,7 +1392,7 @@ dependencies = [
 
 [[package]]
 name = "keydock-state"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "axum",
  "keydock-domain",
@@ -1403,14 +1403,14 @@ dependencies = [
 
 [[package]]
 name = "keydock-support"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "time",
 ]
 
 [[package]]
 name = "keydock-testkit"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "axum-test",
  "base64",
@@ -1434,7 +1434,7 @@ dependencies = [
 
 [[package]]
 name = "keydock-usecase"
-version = "1.0.0-rc.3"
+version = "1.0.0-rc.4"
 dependencies = [
  "base64",
  "bytes",
