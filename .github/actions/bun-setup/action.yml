@@ -7,17 +7,13 @@ inputs:
     description: Directory containing bun.lock (relative to the repository root).
     required: false
     default: "."
-  bun-version:
-    description: Bun version passed to oven-sh/setup-bun.
-    required: false
-    default: latest
 
 runs:
   using: composite
   steps:
     - uses: oven-sh/setup-bun@v2.2.0
       with:
-        bun-version: ${{ inputs.bun-version }}
+        bun-version-file: ".bun-version"
 
     - uses: actions/cache@v5.0.5
       with:

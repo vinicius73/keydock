@@ -101,8 +101,8 @@ updates:
       - "dependencies"
       - "rust"
 
-  # ── npm (keydock-sdk) ───────────────────────────────────────────────────────
-  - package-ecosystem: npm
+  # ── Bun (keydock-sdk) ───────────────────────────────────────────────────────
+  - package-ecosystem: bun
     directory: /packages/keydock-sdk
     schedule:
       interval: weekly
@@ -112,16 +112,60 @@ updates:
     commit-message:
       prefix: "chore(deps)"
     groups:
-      npm-patch:
+      bun-patch:
         update-types: ["patch"]
         patterns: ["*"]
-      npm-minor:
+      bun-minor:
         update-types: ["minor"]
         patterns: ["*"]
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
       - "sdk"
+
+  # ── Bun (site) ──────────────────────────────────────────────────────────────
+  - package-ecosystem: bun
+    directory: /site
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      bun-patch:
+        update-types: ["patch"]
+        patterns: ["*"]
+      bun-minor:
+        update-types: ["minor"]
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "site"
+
+  # ── Bun (e2e tests) ─────────────────────────────────────────────────────────
+  - package-ecosystem: bun
+    directory: /tests/e2e
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Sao_Paulo
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      bun-patch:
+        update-types: ["patch"]
+        patterns: ["*"]
+      bun-minor:
+        update-types: ["minor"]
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "e2e"
 
   # ── Docker ──────────────────────────────────────────────────────────────────
   - package-ecosystem: docker
