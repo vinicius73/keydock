@@ -25,6 +25,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       version: ${{ steps.check.outputs.version }}
+      npm_dist_tag: ${{ steps.check.outputs.npm_dist_tag }}
     steps:
       - uses: actions/checkout@v6.0.2
 
@@ -50,6 +51,24 @@ jobs:
           fi
 
           echo "version=${TAG}" >> "${GITHUB_OUTPUT}"
+
+          # npm 11+ rejects prerelease publishes without an explicit --tag (it refuses
+          # to let a pre-release accidentally become "latest"). We always resolve a
+          # dist-tag so that publish steps can unconditionally pass --tag.
+          # Mapping: 1.0.0-rc.1 -> "rc", 1.0.0-0 -> "next", 1.0.0 -> "latest".
+          PRE="${TAG#*-}"
+          if [ "${PRE}" != "${TAG}" ]; then
+            LABEL="${PRE%%.*}"
+            if [[ "${LABEL}" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+              NPM_TAG="${LABEL,,}"
+            else
+              NPM_TAG="next"
+            fi
+          else
+            NPM_TAG="latest"
+          fi
+          echo "npm_dist_tag=${NPM_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "npm dist-tag: ${NPM_TAG}"
 
   build-docker:
     name: Build and push Docker image
@@ -162,7 +181,9 @@ jobs:
   publish-npm:
     name: Publish SDK to npm
     runs-on: ubuntu-latest
-    needs: build-sdk
+    needs:
+      - build-sdk
+      - validate-tag
     timeout-minutes: 15
     # Trusted publishing via OIDC (no NPM_TOKEN required).
     # The trusted publisher on npmjs.com is bound to this exact workflow filename
@@ -192,12 +213,16 @@ jobs:
       # publishing from a public repo via trusted publishing.
       - name: Publish to npm (OIDC)
         working-directory: packages/keydock-sdk
-        run: npm publish --access public
+        env:
+          NPM_DIST_TAG: ${{ needs.validate-tag.outputs.npm_dist_tag }}
+        run: npm publish --access public --tag "${NPM_DIST_TAG}"
 
   publish-ghp:
     name: Publish SDK to GitHub Packages
     runs-on: ubuntu-latest
-    needs: build-sdk
+    needs:
+      - build-sdk
+      - validate-tag
     timeout-minutes: 15
     permissions:
       contents: read
@@ -229,7 +254,8 @@ jobs:
         working-directory: packages/keydock-sdk
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm publish --access public
+          NPM_DIST_TAG: ${{ needs.validate-tag.outputs.npm_dist_tag }}
+        run: npm publish --access public --tag "${NPM_DIST_TAG}"
 
   publish-jsr:
     name: Publish SDK to JSR
@@ -283,9 +309,13 @@ jobs:
           version="${{ needs.validate-tag.outputs.version }}"
           repo="${{ github.repository }}"
           owner="${{ github.repository_owner }}"
+          npm_tag="${{ needs.validate-tag.outputs.npm_dist_tag }}"
           {
             printf "## 🎉 v%s released\n\n" "${version}"
             printf "| | |\n|---|---|\n"
             printf "| GitHub Release | https://github.com/%s/releases/tag/v%s |\n" "${repo}" "${version}"
             printf "| Docker | \`ghcr.io/%s/keydock:%s\` |\n" "${owner}" "${version}"
+            if [ -n "${npm_tag}" ]; then
+              printf "| npm dist-tag | \`%s\` (install with \`npm i keydock-sdk@%s\`) |\n" "${npm_tag}" "${npm_tag}"
+            fi
           } >> "${GITHUB_STEP_SUMMARY}"
