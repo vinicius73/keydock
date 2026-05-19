@@ -295,12 +295,30 @@ jobs:
           name: binary
           path: release-assets
 
-      - uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
-          files: |
-            release-assets/keydock-linux-amd64
+      - name: Create GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.validate-tag.outputs.version }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Mark as pre-release when the version contains a pre-release segment (e.g. 1.0.0-rc.1).
+          pre_flag=""
+          if [[ "${VERSION}" == *-* ]]; then
+            pre_flag="--prerelease"
+          fi
+
+          # Atomic: creates the release and uploads assets in a single operation,
+          # avoiding the draft→finalize race that causes "immutable release" errors.
+          # shellcheck disable=SC2086
+          gh release create "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --generate-notes \
+            --verify-tag \
+            ${pre_flag} \
+            release-assets/keydock-linux-amd64 \
             release-assets/keydock-linux-amd64.sha256
 
       - name: Summary
