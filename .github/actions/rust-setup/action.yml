@@ -1,6 +1,6 @@
 name: Rust Setup
 description: >
-  Parse rust-toolchain.toml, install the pinned toolchain, and restore the
+  Install the pinned toolchain from rust-toolchain.toml and restore the
   Cargo dependency cache. All consumers share the same cache key.
 
 inputs:
@@ -16,24 +16,14 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Parse rust-toolchain.toml
-      id: toolchain
-      shell: bash
-      run: |
-        channel=$(grep -E '^channel\s*=' rust-toolchain.toml | head -n1 | sed -E 's/^channel\s*=\s*"([^"]+)".*/\1/')
-        if [ -z "$channel" ]; then
-          echo "failed to parse channel from rust-toolchain.toml" >&2
-          exit 1
-        fi
-        echo "channel=$channel" >> "$GITHUB_OUTPUT"
-
-    # @master required when toolchain is passed as explicit input (not inferred from @rev).
-    # No versioned releases exist; pinned to a commit SHA for immutability.
+    # Omitting `toolchain` makes dtolnay/rust-toolchain read rust-toolchain.toml natively.
+    # No versioned releases exist for this action; pinned to a SHA for immutability.
     - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master (2026-04-29)
       with:
-        toolchain: ${{ steps.toolchain.outputs.channel }}
         components: ${{ inputs.components }}
 
+    # Swatinem/rust-cache v2 includes rust-toolchain.toml, Cargo.lock, and RUSTFLAGS
+    # in its key hash automatically, so shared-key only needs to scope by OS.
     - uses: Swatinem/rust-cache@v2.9.1
       with:
         shared-key: rust-${{ runner.os }}

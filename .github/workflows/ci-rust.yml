@@ -37,6 +37,13 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Incremental compilation adds no value in CI: each run restores a cache
+  # snapshot rather than continuing a live dev session.
+  CARGO_INCREMENTAL: 0
+  # RUSTFLAGS replaces (not appends) build.rustflags from .cargo/config.toml,
+  # so -D warnings must be repeated here explicitly.
+  # -C debuginfo=0 strips debug symbols to keep the cache small.
+  RUSTFLAGS: "-D warnings -C debuginfo=0"
 
 jobs:
   check:
@@ -76,6 +83,8 @@ jobs:
           ref: ${{ inputs.ref }}
 
       - uses: ./.github/actions/rust-setup
+        with:
+          cache-on-failure: "true"
 
       - name: cargo test
         run: cargo test --workspace --locked

@@ -19,6 +19,14 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+  # RUSTFLAGS replaces (not appends) build.rustflags from .cargo/config.toml,
+  # so -D warnings must be repeated here to preserve deny-warnings behavior.
+  RUSTFLAGS: "-D warnings -C debuginfo=0"
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
@@ -30,7 +38,7 @@ jobs:
       RUST_LOG: ${{ inputs.log_level }}
       KEYDOCK_BIN: ${{ github.workspace }}/target/release/keydock
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - uses: ./.github/actions/rust-setup
 
@@ -64,14 +72,14 @@ jobs:
             bun run test
           fi
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: playwright-report
           path: tests/e2e/playwright-report
           if-no-files-found: ignore
 
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: playwright-test-results
