@@ -22,17 +22,17 @@
   "dependencies": {
     "keydock-sdk": "file:../../packages/keydock-sdk",
     "ky": "^2.0.2",
-    "vue": "^3.5.33"
+    "vue": "^3.5.34"
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.4",
     "@types/node": "^25.6.0",
-    "@vitejs/plugin-vue": "^6.0.6",
+    "@vitejs/plugin-vue": "^6.0.7",
     "oxfmt": "^0.47.0",
     "oxlint": "^1.62.0",
     "tailwindcss": "^4.2.4",
     "typescript": "^6.0.3",
-    "vite": "^8.0.10"
+    "vite": "^8.0.14"
   }
 }
