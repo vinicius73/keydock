@@ -28,10 +28,10 @@
   },
   "devDependencies": {
     "ky": "2.0.2",
-    "oxfmt": "^0.47.0",
-    "oxlint": "^1.62.0",
-    "rolldown": "^1.0.0-rc.18",
-    "rolldown-plugin-dts": "^0.23.2",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
+    "rolldown": "^1.1.0",
+    "rolldown-plugin-dts": "^0.25.2",
     "typescript": "^6.0.3"
   },
   "scripts": {
