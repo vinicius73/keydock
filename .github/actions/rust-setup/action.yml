@@ -33,7 +33,7 @@ runs:
 
     # Swatinem/rust-cache v2 includes rust-toolchain.toml, Cargo.lock, and RUSTFLAGS
     # in its key hash automatically, so shared-key only needs to scope by OS.
-    - uses: Swatinem/rust-cache@v2.9.1
+    - uses: Swatinem/rust-cache@v2.9.2
       with:
         shared-key: rust-${{ runner.os }}
         cache-on-failure: ${{ inputs.cache-on-failure }}
